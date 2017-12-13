@@ -46,8 +46,10 @@
 #include "net/ipv6/uip-ds6-context.h"
 #include "net/ipv6/uip-packetqueue.h"
 
-#define DEBUG DEBUG_NONE
-#include "net/ipv6/uip-debug.h"
+/* Log configuration */
+#include "sys/log.h"
+#define LOG_MODULE "IPv6 DS CTX"
+#define LOG_LEVEL LOG_LEVEL_IPV6
 
 uip_ds6_context_pref_t uip_ds6_context_pref_list[UIP_DS6_CONTEXT_PREF_NB];  /** \brief Prefix list */
 
@@ -70,13 +72,13 @@ uip_ds6_context_pref_add(uip_ipaddr_t *ipaddr, uint8_t length, uint8_t c_cid)
     uip_ipaddr_copy(&loccontext->ipaddr, ipaddr);
     loccontext->length = length;
     loccontext->cid = c_cid & UIP_ND6_6CO_FLAG_CID;
-    PRINTF("Adding context prefix ");
-    PRINT6ADDR(&loccontext->ipaddr);
-    PRINTF(" length %u, c %x, cid %x\n",
-           length, c_cid & 0x10, c_cid & 0x0f);
+    LOG_INFO("Adding context prefix ");
+    LOG_INFO_6ADDR(&loccontext->ipaddr);
+    LOG_INFO_(" length %u, c %x, cid %x\n",
+              length, c_cid & 0x10, c_cid & 0x0f);
     return loccontext;
   } else {
-    PRINTF("No more space in Context Prefix list\n");
+    LOG_WARN("No more space in Context Prefix list\n");
   }
   return NULL;
 }
