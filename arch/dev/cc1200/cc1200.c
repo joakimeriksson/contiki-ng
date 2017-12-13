@@ -45,19 +45,18 @@
 #include "dev/leds.h"
 
 #include <string.h>
-#include <stdio.h>
+
+/* Log configuration */
+#include "sys/log.h"
+#define LOG_MODULE "RF CC1200"
+#define LOG_LEVEL LOG_LEVEL_DBG
+
+/* Verbose debug output including asserts */
+#define DEBUG_LEVEL 1
 
 /*---------------------------------------------------------------------------*/
 /* Various implementation specific defines */
 /*---------------------------------------------------------------------------*/
-/*
- * The debug level to use
- * - 0: No output at all
- * - 1: Print errors (unrecoverable)
- * - 2: Print errors + warnings (recoverable errors)
- * - 3: Print errors + warnings + information (what's going on...)
- */
-#define DEBUG_LEVEL                     3
 /*
  * RF test mode. Blocks inside "configure()".
  * - Set this parameter to 1 in order to produce an modulated carrier (PN9)
@@ -321,36 +320,15 @@ extern const cc1200_rf_cfg_t CC1200_RF_CFG;
 /* Debug macros */
 /*---------------------------------------------------------------------------*/
 #if DEBUG_LEVEL > 0
-/* Show all kind of errors e.g. when passing invalid payload length */
-#define ERROR(...) printf(__VA_ARGS__)
-#else
-#define ERROR(...)
-#endif
-
-#if DEBUG_LEVEL > 0
 /* This macro is used to check if the radio is in a valid state */
 #define RF_ASSERT(condition) \
   do { \
     if(!(condition)) { \
-      printf("RF: Assertion failed in line %d\n", __LINE__); \
+      LOG_DBG("Assertion failed in line %d\n", __LINE__); \
     } \
   } while(0)
 #else
 #define RF_ASSERT(condition)
-#endif
-
-#if DEBUG_LEVEL > 1
-/* Show warnings e.g. for FIFO errors */
-#define WARNING(...) printf(__VA_ARGS__)
-#else
-#define WARNING(...)
-#endif
-
-#if DEBUG_LEVEL > 2
-/* We just print out what's going on */
-#define INFO(...) printf(__VA_ARGS__)
-#else
-#define INFO(...)
 #endif
 
 #if DEBUG_LEVEL > 0
@@ -365,7 +343,7 @@ extern const cc1200_rf_cfg_t CC1200_RF_CFG;
     t0 = RTIMER_NOW(); \
     while((state() != s) && RTIMER_CLOCK_LT(RTIMER_NOW(), t0 + (t))) {} \
     if(!(RTIMER_CLOCK_LT(RTIMER_NOW(), t0 + (t)))) { \
-      printf("RF: Timeout exceeded in line %d!\n", __LINE__); \
+      LOG_WARN("Timeout exceeded in line %d!\n", __LINE__); \
     } \
   } while(0)
 #else
@@ -589,7 +567,7 @@ PROCESS_THREAD(cc1200_process, ev, data)
 
         LOCK_SPI();
         if(state() != STATE_RX) {
-          WARNING("RF: RX watchdog triggered!\n");
+          LOG_WARN("RX watchdog triggered!\n");
           rx_rx();
         }
         RELEASE_SPI();
@@ -658,7 +636,7 @@ static int
 init(void)
 {
 
-  INFO("RF: Init (%s)\n", CC1200_RF_CFG.cfg_descriptor);
+  LOG_INFO("Init (%s)\n", CC1200_RF_CFG.cfg_descriptor);
 
   if(!(rf_flags & RF_INITIALIZED)) {
 
@@ -713,11 +691,11 @@ static int
 prepare(const void *payload, unsigned short payload_len)
 {
 
-  INFO("RF: Prepare (%d)\n", payload_len);
+  LOG_INFO("Prepare (%d)\n", payload_len);
 
   if((payload_len < ACK_LEN) ||
      (payload_len > CC1200_MAX_PAYLOAD_LEN)) {
-    ERROR("RF: Invalid payload length!\n");
+    LOG_ERR("Invalid payload length!\n");
     return RADIO_TX_ERR;
   }
 
@@ -736,10 +714,10 @@ transmit(unsigned short transmit_len)
   uint8_t was_off = 0;
   int ret = RADIO_TX_OK;
 
-  INFO("RF: Transmit (%d)\n", transmit_len);
+  LOG_INFO("Transmit (%d)\n", transmit_len);
 
   if(transmit_len != tx_pkt_len) {
-    ERROR("RF: TX length mismatch!\n");
+    LOG_ERR("TX length mismatch!\n");
     return RADIO_TX_ERR;
   }
 
@@ -841,7 +819,7 @@ send(const void *payload, unsigned short payload_len)
 
   int ret;
 
-  INFO("RF: Send (%d)\n", payload_len);
+  LOG_INFO("Send (%d)\n", payload_len);
 
   /* payload_len checked within prepare() */
   if((ret = prepare(payload, payload_len)) == RADIO_TX_OK) {
@@ -869,11 +847,11 @@ read(void *buf, unsigned short buf_len)
 
     if(len > buf_len) {
 
-      ERROR("RF: Failed to read packet (too big)!\n");
+      LOG_ERR("Failed to read packet (too big: %d bytes)!\n", len);
 
     } else {
 
-      INFO("RF: Read (%d bytes, %d dBm)\n", len, rssi);
+      LOG_INFO("Read (%d bytes, %d dBm)\n", len, rssi);
 
       memcpy((void *)buf, (const void *)rx_pkt, len);
 
@@ -926,7 +904,7 @@ channel_clear(void)
 
   if(cc1200_arch_gpio0_read_pin() == 1) {
     /* Channel occupied */
-    INFO("RF: CCA (0)\n");
+    LOG_INFO("CCA (0)\n");
     cca = 0;
   } else {
 
@@ -945,11 +923,11 @@ channel_clear(void)
 
     if(rssi0 & CC1200_CARRIER_SENSE) {
       /* Channel occupied */
-      INFO("RF: CCA (0)\n");
+      LOG_INFO("CCA (0)\n");
       cca = 0;
     } else {
       /* Channel clear */
-      INFO("RF: CCA (1)\n");
+      LOG_INFO("CCA (1)\n");
       cca = 1;
     }
 
@@ -1000,7 +978,9 @@ receiving_packet(void)
     }
   }
 
-  INFO("RF: Receiving (%d)\n", ret);
+  if(ret != 0) {
+    LOG_INFO("Receiving (%d)\n", ret);
+  }
   return ret;
 
 }
@@ -1010,7 +990,7 @@ static int
 pending_packet(void)
 {
 
-  INFO("RF: Pending (%d)\n", ((rx_pkt_len != 0) ? 1 : 0));
+  LOG_INFO("Pending (%d)\n", ((rx_pkt_len != 0) ? 1 : 0));
   return (rx_pkt_len != 0) ? 1 : 0;
 
 }
@@ -1020,7 +1000,7 @@ static int
 on(void)
 {
 
-  INFO("RF: On\n");
+  LOG_INFO("On\n");
 
   /* Don't turn on if we are on already */
   if(!(rf_flags & RF_ON)) {
@@ -1055,7 +1035,7 @@ on(void)
 #endif /* #if CC1200_USE_RX_WATCHDOG */
 
   } else {
-    INFO("RF: Already on\n");
+    LOG_INFO("Already on\n");
   }
 
   return 1;
@@ -1067,7 +1047,7 @@ static int
 off(void)
 {
 
-  INFO("RF: Off\n");
+  LOG_INFO("Off\n");
 
   /* Don't turn off if we are off already */
   if(rf_flags & RF_ON) {
@@ -1099,7 +1079,7 @@ off(void)
 #endif /* #if CC1200_USE_RX_WATCHDOG */
 
   } else {
-    INFO("RF: Already off\n");
+    LOG_INFO("Already off\n");
   }
 
   return 1;
@@ -1475,9 +1455,9 @@ configure(void)
   single_write(CC1200_FREQ1, ((uint8_t *)&freq)[1]);
   single_write(CC1200_FREQ2, ((uint8_t *)&freq)[2]);
 
-  printf("RF: Freq0 0x%02x\n",  ((uint8_t *)&freq)[0]);
-  printf("RF: Freq1 0x%02x\n",  ((uint8_t *)&freq)[1]);
-  printf("RF: Freq2 0x%02x\n",  ((uint8_t *)&freq)[2]);
+  LOG_DBG("Freq0 0x%02x\n",  ((uint8_t *)&freq)[0]);
+  LOG_DBG("Freq1 0x%02x\n",  ((uint8_t *)&freq)[1]);
+  LOG_DBG("Freq2 0x%02x\n",  ((uint8_t *)&freq)[2]);
 
 #if (CC1200_RF_TESTMODE == 1)
   single_write(CC1200_SYNC_CFG1, 0xE8);
@@ -1664,7 +1644,7 @@ calibrate(void)
   rf_flags &= ~RF_FORCE_CALIBRATION;
 #endif
 
-  INFO("RF: Calibrate\n");
+  LOG_INFO("Calibrate\n");
 
   strobe(CC1200_SCAL);
   BUSYWAIT_UNTIL_STATE(STATE_CALIBRATE, RTIMER_SECOND / 100);
@@ -1697,10 +1677,10 @@ idle(void)
   if(s == STATE_IDLE) {
     return;
   } else if(s == STATE_RX_FIFO_ERR) {
-    WARNING("RF: RX FIFO error!\n");
+    LOG_WARN("RX FIFO error!\n");
     strobe(CC1200_SFRX);
   } else if(s == STATE_TX_FIFO_ERR) {
-    WARNING("RF: TX FIFO error!\n");
+    LOG_WARN("TX FIFO error!\n");
     strobe(CC1200_SFTX);
   }
 
@@ -1741,10 +1721,10 @@ rx_rx(void)
   if(s == STATE_IDLE) {
     /* Proceed to rx */
   } else if(s == STATE_RX_FIFO_ERR) {
-    WARNING("RF: RX FIFO error!\n");
+    LOG_WARN("RX FIFO error!\n");
     strobe(CC1200_SFRX);
   } else if(s == STATE_TX_FIFO_ERR) {
-    WARNING("RF: TX FIFO error!\n");
+    LOG_WARN("TX FIFO error!\n");
     strobe(CC1200_SFTX);
   } else {
     strobe(CC1200_SIDLE);
@@ -1875,7 +1855,7 @@ idle_tx_rx(const uint8_t *payload, uint16_t payload_len)
      * in case we missed the rising edge of the GPIO signal
      */
 
-    ERROR("RF: TX doesn't start!\n");
+    LOG_ERR("TX doesn't start!\n");
 #if (CC1200_MAX_PAYLOAD_LEN > (CC1200_FIFO_SIZE - PHR_LEN))
     single_write(CC1200_IOCFG2, GPIO2_IOCFG);
 #endif
@@ -1921,7 +1901,7 @@ idle_tx_rx(const uint8_t *payload, uint16_t payload_len)
        * stable state (in case of an error we are in TX here)
        */
 
-      INFO("RF: TX failure!\n");
+      LOG_INFO("TX failure!\n");
       BUSYWAIT_UNTIL((state() != STATE_TX), RTIMER_SECOND / 100);
       /* Re-configure GPIO2 */
       single_write(CC1200_IOCFG2, GPIO2_IOCFG);
@@ -1947,7 +1927,7 @@ idle_tx_rx(const uint8_t *payload, uint16_t payload_len)
 
   if(cc1200_arch_gpio0_read_pin() == 1) {
     /* TX takes to long - abort */
-    ERROR("RF: TX takes to long!\n");
+    LOG_ERR("TX takes to long!\n");
 #if (CC1200_MAX_PAYLOAD_LEN > (CC1200_FIFO_SIZE - PHR_LEN))
     /* Re-configure GPIO2 */
     single_write(CC1200_IOCFG2, GPIO2_IOCFG);
@@ -2049,14 +2029,14 @@ set_channel(uint8_t channel)
     new_rf_channel = channel;
     rf_flags |= RF_UPDATE_CHANNEL;
     process_poll(&cc1200_process);
-    INFO("RF: Channel update postponed\n");
+    LOG_INFO("Channel update postponed\n");
 
     return CHANNEL_UPDATE_POSTPONED;
 
   }
   rf_flags &= ~RF_UPDATE_CHANNEL;
 
-  INFO("RF: Channel update (%d)\n", channel);
+  LOG_INFO("Channel update (%d)\n", channel);
 
   if(!(rf_flags & RF_ON)) {
     was_off = 1;
@@ -2247,7 +2227,7 @@ cc1200_rx_interrupt(void)
      * from TWO interrupts which can occur at the same time.
      */
 
-    INFO("RF: RX FIFO empty!\n");
+    LOG_INFO("RX FIFO empty!\n");
     RELEASE_SPI();
     return 0;
 
@@ -2264,7 +2244,7 @@ cc1200_rx_interrupt(void)
 
     if(num_rxbytes < PHR_LEN) {
 
-      WARNING("RF: PHR incomplete!\n");
+      LOG_WARN("PHR incomplete!\n");
       rx_rx();
       RELEASE_SPI();
       return 0;
@@ -2294,7 +2274,7 @@ cc1200_rx_interrupt(void)
 
     if(payload_len < ACK_LEN) {
       /* Packet to short. Discard it */
-      WARNING("RF: Packet too short!\n");
+      LOG_WARN("Packet too short! (%d)\n", payload_len);
       rx_rx();
       RELEASE_SPI();
       return 0;
@@ -2302,7 +2282,7 @@ cc1200_rx_interrupt(void)
 
     if(payload_len > CC1200_MAX_PAYLOAD_LEN) {
       /* Packet to long. Discard it */
-      WARNING("RF: Packet to long!\n");
+      LOG_WARN("Packet to long! (%d)\n", payload_len);
       rx_rx();
       RELEASE_SPI();
       return 0;
@@ -2333,7 +2313,7 @@ cc1200_rx_interrupt(void)
        * so we catch this error here.
        */
 
-      WARNING("RF: RX length mismatch %d %d %d!\n", num_rxbytes,
+      LOG_WARN("RX length mismatch %d %d %d!\n", num_rxbytes,
               bytes_read,
               payload_len);
       rx_rx();
@@ -2366,10 +2346,10 @@ cc1200_rx_interrupt(void)
 
       if(!(crc_lqi & (1 << 7))) {
         /* CRC error. Drop the packet */
-        INFO("RF: CRC error!\n");
+        LOG_INFO("CRC error!\n");
       } else if(rx_pkt_len != 0) {
         /* An old packet is pending. Drop the packet */
-        WARNING("RF: Packet pending!\n");
+        LOG_WARN("Packet pending!\n");
       } else {
 
         int ret = addr_check_auto_ack(buf, bytes_read);
