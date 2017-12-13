@@ -52,7 +52,7 @@
 #define LOG_LEVEL LOG_LEVEL_INFO
 
 /* Verbose debug output including asserts */
-#define DEBUG_LEVEL 1
+#define DEBUG_LEVEL 0
 
 /*---------------------------------------------------------------------------*/
 /* Various implementation specific defines */
