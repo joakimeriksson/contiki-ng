@@ -545,7 +545,7 @@ PROCESS_THREAD(cc1200_process, ev, data)
     if((rf_flags & (RF_ON | RF_TX_ACTIVE)) == RF_ON) {
 
       PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-      etimer_reset(&et);
+      etimer_restart(&et);
 
       /*
        * We are on and not in TX. As every function of this driver
@@ -848,6 +848,7 @@ read(void *buf, unsigned short buf_len)
     if(len > buf_len) {
 
       LOG_ERR("Failed to read packet (too big: %d bytes)!\n", len);
+      len = 0;
 
     } else {
 
@@ -2282,7 +2283,7 @@ cc1200_rx_interrupt(void)
 
     if(payload_len > CC1200_MAX_PAYLOAD_LEN) {
       /* Packet to long. Discard it */
-      LOG_WARN("Packet to long! (%d)\n", payload_len);
+      LOG_WARN("Packet too long! (%d)\n", payload_len);
       rx_rx();
       RELEASE_SPI();
       return 0;
@@ -2346,10 +2347,10 @@ cc1200_rx_interrupt(void)
 
       if(!(crc_lqi & (1 << 7))) {
         /* CRC error. Drop the packet */
-        LOG_INFO("CRC error!\n");
+        LOG_INFO("CRC error! (%d)\n", bytes_read);
       } else if(rx_pkt_len != 0) {
         /* An old packet is pending. Drop the packet */
-        LOG_WARN("Packet pending!\n");
+        LOG_WARN("Packet pending! (%d)\n", bytes_read);
       } else {
 
         int ret = addr_check_auto_ack(buf, bytes_read);
