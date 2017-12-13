@@ -385,7 +385,6 @@ dio_input(void)
           dio.mc.obj.energy.energy_est = buffer[i + 7];
         } else {
           PRINTF("RPL: Unhandled DAG MC type: %u\n", (unsigned)dio.mc.type);
-          goto discard;
         }
         break;
       case RPL_OPTION_ROUTE_INFO:
