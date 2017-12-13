@@ -508,6 +508,9 @@ frame802154_parse(uint8_t *data, int len, frame802154_t *pf)
   uint8_t key_id_mode;
 #endif /* LLSEC802154_USES_EXPLICIT_KEYS */
 
+  /* init to zeroes */
+  memset(pf, 0, sizeof(frame802154_t));
+
   if(len < 2) {
     return 0;
   }

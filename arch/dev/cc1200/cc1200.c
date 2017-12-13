@@ -57,7 +57,7 @@
  * - 2: Print errors + warnings (recoverable errors)
  * - 3: Print errors + warnings + information (what's going on...)
  */
-#define DEBUG_LEVEL                     2
+#define DEBUG_LEVEL                     3
 /*
  * RF test mode. Blocks inside "configure()".
  * - Set this parameter to 1 in order to produce an modulated carrier (PN9)
@@ -2272,7 +2272,7 @@ cc1200_rx_interrupt(void)
     }
 
     burst_read(CC1200_RXFIFO,
-               &phr,
+               (uint8_t *)&phr,
                PHR_LEN);
     payload_len = (phr.phra & 0x07);
     payload_len <<= 8;

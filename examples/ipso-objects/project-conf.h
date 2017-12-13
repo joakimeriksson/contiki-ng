@@ -55,4 +55,27 @@
 /* Enable client-side support for COAP observe */
 #define COAP_OBSERVE_CLIENT 1
 
+/* For using the Cyan Connode network? */
+#define LLSEC802154_CONF_ENABLED       1
+#define LLSEC802154_USES_FRAME_COUNTER 1
+#define RF_CHANNEL                     32
+#define IEEE802154_CONF_PANID          0
+#define CC1200_CONF_802154G            1
+#define CC1200_CONF_MAX_PAYLOAD_LEN    255
+
+#define CC1200_CONF_USE_GPIO2          1
+
+#define PACKETBUF_CONF_SIZE             255
+#define SICSLOWPAN_CONF_MAC_MAX_PAYLOAD 253
+
+#define RPL_CONF_DEFAULT_INSTANCE      1
+
+#define LPM_CONF_ENABLE       0
+
+
+#define LOG_CONF_LEVEL_TCPIP                       LOG_LEVEL_INFO
+#define LOG_CONF_LEVEL_IPV6                        LOG_LEVEL_INFO
+#define LOG_CONF_LEVEL_6LOWPAN                     LOG_LEVEL_INFO
+#define LOG_CONF_LEVEL_MAC                         LOG_LEVEL_INFO
+
 #endif /* PROJECT_CONF_H_ */

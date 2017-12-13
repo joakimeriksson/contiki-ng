@@ -110,6 +110,9 @@
 #define LEDS_PURPLE     (LEDS_BLUE  | LEDS_RED)  /**< Blue + Red   (40)       */
 #define LEDS_WHITE      LEDS_ALL                 /**< Green + Blue + Red (56) */
 
+
+#define CC1200_CONF_SUBGHZ_50KBPS_MODE    1
+
 /* Notify various examples that we have LEDs */
 #define PLATFORM_HAS_LEDS        1
 /** @} */
