@@ -8,6 +8,8 @@ MODULES += os/net/app-layer/coap
 MODULES += os/services/lwm2m
 MODULES += os/services/ipso-objects
 
+MAKE_ROUTING = MAKE_ROUTING_RPL_CLASSIC
+
 CONTIKI=../..
 include $(CONTIKI)/Makefile.include
 

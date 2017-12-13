@@ -70,8 +70,10 @@
 
 #define RPL_CONF_DEFAULT_INSTANCE      1
 
-#define LPM_CONF_ENABLE       0
+/* Include the DODAG ID in DAO */
+#define RPL_CONF_DAO_SPECIFY_DAG       1
 
+#define LPM_CONF_ENABLE       0
 
 #define LOG_CONF_LEVEL_TCPIP                       LOG_LEVEL_WARN
 #define LOG_CONF_LEVEL_IPV6                        LOG_LEVEL_WARN
