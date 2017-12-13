@@ -121,7 +121,8 @@ aead(uint8_t hdrlen, int forward)
   totlen = packetbuf_totlen();
   a = packetbuf_hdrptr();
 
-  with_encryption = packetbuf_attr(PACKETBUF_ATTR_SECURITY_LEVEL & 0x4) ? 1 : 0;
+  with_encryption =
+    (packetbuf_attr(PACKETBUF_ATTR_SECURITY_LEVEL) & 0x4) ? 1 : 0;
 
   if(with_encryption) {
     a_len = hdrlen;
@@ -135,15 +136,6 @@ aead(uint8_t hdrlen, int forward)
 
   mic = a + totlen;
   result = forward ? mic : generated_mic;
-
-  {
-    int i;
-    printf("Using key:");
-    for(i = 0; i < 16; i++) {
-      printf("%02x", key->u8[i]);
-    }
-    printf("\n");
-  }
 
   CCM_STAR.set_key(key->u8);
   CCM_STAR.aead(nonce,
@@ -165,6 +157,12 @@ int
 csma_security_create_frame(void)
 {
   int hdr_len;
+
+  packetbuf_set_attr(PACKETBUF_ATTR_FRAME_TYPE, FRAME802154_DATAFRAME);
+  if(packetbuf_attr(PACKETBUF_ATTR_SECURITY_LEVEL) > 0 &&
+     packetbuf_attr(PACKETBUF_ATTR_KEY_INDEX) != 0xffff) {
+    anti_replay_set_counter();
+  }
 
   hdr_len = NETSTACK_FRAMER.create();
   if(hdr_len < 0) {
@@ -188,6 +186,16 @@ csma_security_create_frame(void)
   return hdr_len;
 }
 
+/*---------------------------------------------------------------------------*/
+int
+csma_security_frame_len(void)
+{
+  if(packetbuf_attr(PACKETBUF_ATTR_SECURITY_LEVEL) > 0 &&
+     packetbuf_attr(PACKETBUF_ATTR_KEY_INDEX) != 0xffff) {
+    return NETSTACK_FRAMER.length() + MIC_LEN;
+  }
+  return NETSTACK_FRAMER.length();
+}
 /*---------------------------------------------------------------------------*/
 int
 csma_security_parse_frame(void)
@@ -240,7 +248,6 @@ csma_security_parse_frame(void)
   }
 
   packetbuf_set_datalen(packetbuf_datalen() - MIC_LEN);
-
   if(!aead(hdr_len, 0)) {
     LOG_INFO("received unauthentic frame %u from ",
              (unsigned int) anti_replay_get_counter());

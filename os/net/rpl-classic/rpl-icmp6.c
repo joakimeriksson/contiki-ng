@@ -59,7 +59,7 @@
 #include <limits.h>
 #include <string.h>
 
-#define DEBUG DEBUG_NONE
+#define DEBUG DEBUG_FULL
 
 #include "net/ipv6/uip-debug.h"
 
@@ -128,6 +128,8 @@ prepare_for_dao_fwd(uint8_t sequence, uip_ds6_route_t *rep)
 {
   /* not pending - or pending but not a retransmission */
   RPL_LOLLIPOP_INCREMENT(dao_sequence);
+  /* also increase path sequence */
+  RPL_LOLLIPOP_INCREMENT(path_sequence);
 
   /* set DAO pending and sequence numbers */
   rep->state.dao_seqno_in = sequence;
@@ -385,6 +387,7 @@ dio_input(void)
           dio.mc.obj.energy.flags = buffer[i + 6];
           dio.mc.obj.energy.energy_est = buffer[i + 7];
         } else {
+          /* Silently ignore unhandled MC */
           PRINTF("RPL: Unhandled DAG MC type: %u\n", (unsigned)dio.mc.type);
         }
         break;

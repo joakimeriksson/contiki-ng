@@ -73,9 +73,12 @@
 #define LPM_CONF_ENABLE       0
 
 
-#define LOG_CONF_LEVEL_TCPIP                       LOG_LEVEL_INFO
-#define LOG_CONF_LEVEL_IPV6                        LOG_LEVEL_INFO
+#define LOG_CONF_LEVEL_TCPIP                       LOG_LEVEL_WARN
+#define LOG_CONF_LEVEL_IPV6                        LOG_LEVEL_WARN
 #define LOG_CONF_LEVEL_6LOWPAN                     LOG_LEVEL_INFO
-#define LOG_CONF_LEVEL_MAC                         LOG_LEVEL_INFO
+#define LOG_CONF_LEVEL_MAC                         LOG_LEVEL_WARN
+
+/* Global Leshan server */
+#define LWM2M_SERVER_ADDRESS "2001:41d0:8:95ce::1"
 
 #endif /* PROJECT_CONF_H_ */

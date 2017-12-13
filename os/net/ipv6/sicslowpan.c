@@ -927,7 +927,7 @@ compress_hdr_iphc(linkaddr_t *link_destaddr)
       /* allocate a byte for the next header posision as UDP has no next */
       hc06_ptr++;
       udp_buf = UIP_UDP_BUF(ext_hdr_len);
-      LOG_INFO("IPHC: Uncompressed UDP ports on send side: %x, %x\n",
+      LOG_INFO("IPHC: Uncompressed UDP ports on send side: %u, %u\n",
              UIP_HTONS(udp_buf->srcport), UIP_HTONS(udp_buf->destport));
       /* Mask out the last 4 bits can be used as a mask */
       if(((UIP_HTONS(udp_buf->srcport) & 0xfff0) == SICSLOWPAN_UDP_4_BIT_PORT_MIN) &&

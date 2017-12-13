@@ -57,7 +57,7 @@ void
 anti_replay_set_counter(void)
 {
   frame802154_frame_counter_t reordered_counter;
-  
+
   ++counter;
   reordered_counter.u32 = LLSEC802154_HTONL(counter);
   

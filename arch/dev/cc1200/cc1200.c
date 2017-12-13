@@ -49,7 +49,7 @@
 /* Log configuration */
 #include "sys/log.h"
 #define LOG_MODULE "RF CC1200"
-#define LOG_LEVEL LOG_LEVEL_DBG
+#define LOG_LEVEL LOG_LEVEL_INFO
 
 /* Verbose debug output including asserts */
 #define DEBUG_LEVEL 1
