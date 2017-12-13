@@ -68,6 +68,7 @@
 #include "net/ipv6/tcpip.h"
 #include "net/ipv6/uip.h"
 #include "net/ipv6/uip-ds6.h"
+#include "net/ipv6/uip-ds6-context.h"
 #include "net/ipv6/uipbuf.h"
 #include "net/ipv6/sicslowpan.h"
 #include "net/netstack.h"
@@ -85,6 +86,14 @@
 #include "sys/log.h"
 #define LOG_MODULE "6LoWPAN"
 #define LOG_LEVEL LOG_LEVEL_6LOWPAN
+
+#ifndef SICSLOWPAN_DISABLE_NHC_AND_PREFIX_COMPRESSIONS
+#ifdef SICSLOWPAN_CONF_DISABLE_NHC_AND_PREFIX_COMPRESSIONS
+#define SICSLOWPAN_DISABLE_NHC_AND_PREFIX_COMPRESSIONS SICSLOWPAN_CONF_DISABLE_NHC_AND_PREFIX_COMPRESSIONS
+#else /* SICSLOWPAN_CONF_DISABLE_NHC_AND_PREFIX_COMPRESSIONS */
+#define SICSLOWPAN_DISABLE_NHC_AND_PREFIX_COMPRESSIONS 0
+#endif /* SICSLOWPAN_CONF_DISABLE_NHC_AND_PREFIX_COMPRESSIONS */
+#endif /* SICSLOWPAN_DISABLE_NHC_AND_PREFIX_COMPRESSIONS */
 
 #define GET16(ptr,index) (((uint16_t)((ptr)[index] << 8)) | ((ptr)[(index) + 1]))
 #define SET16(ptr,index,value) do {     \
@@ -495,15 +504,6 @@ set_packet_attrs(void)
  *  @{
  */
 
-/** Addresses contexts for IPHC. */
-#if SICSLOWPAN_CONF_MAX_ADDR_CONTEXTS > 0
-static struct sicslowpan_addr_context
-addr_contexts[SICSLOWPAN_CONF_MAX_ADDR_CONTEXTS];
-#endif
-
-/** pointer to an address context. */
-static struct sicslowpan_addr_context *context;
-
 /** pointer to the byte where to write next inline field. */
 static uint8_t *hc06_ptr;
 
@@ -539,40 +539,6 @@ static const uint8_t ttl_values[] = {0, 1, 64, 255};
 /*--------------------------------------------------------------------*/
 /** \name IPHC related functions
  * @{                                                                 */
-/*--------------------------------------------------------------------*/
-/** \brief find the context corresponding to prefix ipaddr */
-static struct sicslowpan_addr_context*
-addr_context_lookup_by_prefix(uip_ipaddr_t *ipaddr)
-{
-/* Remove code to avoid warnings and save flash if no context is used */
-#if SICSLOWPAN_CONF_MAX_ADDR_CONTEXTS > 0
-  int i;
-  for(i = 0; i < SICSLOWPAN_CONF_MAX_ADDR_CONTEXTS; i++) {
-    if((addr_contexts[i].used == 1) &&
-       uip_ipaddr_prefixcmp(&addr_contexts[i].prefix, ipaddr, 64)) {
-      return &addr_contexts[i];
-    }
-  }
-#endif /* SICSLOWPAN_CONF_MAX_ADDR_CONTEXTS > 0 */
-  return NULL;
-}
-/*--------------------------------------------------------------------*/
-/** \brief find the context with the given number */
-static struct sicslowpan_addr_context*
-addr_context_lookup_by_number(uint8_t number)
-{
-/* Remove code to avoid warnings and save flash if no context is used */
-#if SICSLOWPAN_CONF_MAX_ADDR_CONTEXTS > 0
-  int i;
-  for(i = 0; i < SICSLOWPAN_CONF_MAX_ADDR_CONTEXTS; i++) {
-    if((addr_contexts[i].used == 1) &&
-       addr_contexts[i].number == number) {
-      return &addr_contexts[i];
-    }
-  }
-#endif /* SICSLOWPAN_CONF_MAX_ADDR_CONTEXTS > 0 */
-  return NULL;
-}
 /*--------------------------------------------------------------------*/
 static uint8_t
 compress_addr_64(uint8_t bitpos, uip_ipaddr_t *ipaddr, uip_lladdr_t *lladdr)
@@ -675,6 +641,7 @@ compress_hdr_iphc(linkaddr_t *link_destaddr)
   uint8_t tmp, iphc0, iphc1, *next_hdr, *next_nhc;
   int ext_hdr_len;
   struct uip_udp_hdr *udp_buf;
+  uip_ds6_context_pref_t *context;
 
 #if LOG_DBG_ENABLED
   { uint16_t ndx;
@@ -705,17 +672,23 @@ compress_hdr_iphc(linkaddr_t *link_destaddr)
    *
    */
 
+#if ! SICSLOWPAN_DISABLE_NHC_AND_PREFIX_COMPRESSIONS
 
-  /* check if dest context exists (for allocating third byte) */
+  /*
+   * Check if we should compress prefixes via uipbuf flags - then
+   * check if destination context exists (for allocating third byte).
+   */
   /* TODO: fix this so that it remembers the looked up values for
      avoiding two lookups - or set the lookup values immediately */
-  if(addr_context_lookup_by_prefix(&UIP_IP_BUF->destipaddr) != NULL ||
-     addr_context_lookup_by_prefix(&UIP_IP_BUF->srcipaddr) != NULL) {
+  if(!uipbuf_is_attr_flag(UIPBUF_ATTR_FLAGS_6LOWPAN_NO_PREFIX_COMPRESSION) &&
+     (uip_ds6_context_pref_lookup(&UIP_IP_BUF->destipaddr) != NULL ||
+      uip_ds6_context_pref_lookup(&UIP_IP_BUF->srcipaddr) != NULL)) {
     /* set context flag and increase hc06_ptr */
     LOG_INFO("IPHC: compressing dest or src ipaddr - setting CID\n");
     iphc1 |= SICSLOWPAN_IPHC_CID;
     hc06_ptr++;
   }
+#endif /* ! SICSLOWPAN_DISABLE_NHC_AND_PREFIX_COMPRESSIONS */
 
   /*
    * Traffic class, flow label
@@ -763,10 +736,13 @@ compress_hdr_iphc(linkaddr_t *link_destaddr)
 
   /* Note that the payload length is always compressed */
 
+#if ! SICSLOWPAN_DISABLE_NHC_AND_PREFIX_COMPRESSIONS
   /* Next header. We compress it is compressable. */
-  if(IS_COMPRESSABLE_PROTO(UIP_IP_BUF->proto)) {
+  if(!uipbuf_is_attr_flag(UIPBUF_ATTR_FLAGS_6LOWPAN_NO_NHC_COMPRESSION) &&
+     IS_COMPRESSABLE_PROTO(UIP_IP_BUF->proto)) {
     iphc0 |= SICSLOWPAN_IPHC_NH_C;
   }
+#endif /* ! SICSLOWPAN_DISABLE_NHC_AND_PREFIX_COMPRESSIONS */
 
   /* Add proto header unless it is compressed */
   if((iphc0 & SICSLOWPAN_IPHC_NH_C) == 0) {
@@ -802,13 +778,14 @@ compress_hdr_iphc(linkaddr_t *link_destaddr)
     LOG_INFO("IPHC: compressing unspecified - setting SAC\n");
     iphc1 |= SICSLOWPAN_IPHC_SAC;
     iphc1 |= SICSLOWPAN_IPHC_SAM_00;
-  } else if((context = addr_context_lookup_by_prefix(&UIP_IP_BUF->srcipaddr))
-     != NULL) {
+  } else if((iphc1 & SICSLOWPAN_IPHC_CID) &&
+            ((context = uip_ds6_context_pref_lookup(&UIP_IP_BUF->srcipaddr))
+             != NULL)) {
     /* elide the prefix - indicate by CID and set context + SAC */
     LOG_INFO("IPHC: compressing src with context - setting CID & SAC ctx: %d\n",
-           context->number);
-    iphc1 |= SICSLOWPAN_IPHC_CID | SICSLOWPAN_IPHC_SAC;
-    PACKETBUF_IPHC_BUF[2] |= context->number << 4;
+           context->cid);
+    iphc1 |= SICSLOWPAN_IPHC_SAC;
+    PACKETBUF_IPHC_BUF[2] |= context->cid << 4;
     /* compession compare with this nodes address (source) */
 
     iphc1 |= compress_addr_64(SICSLOWPAN_IPHC_SAM_BIT,
@@ -856,11 +833,14 @@ compress_hdr_iphc(linkaddr_t *link_destaddr)
     }
   } else {
     /* Address is unicast, try to compress */
-    if((context = addr_context_lookup_by_prefix(&UIP_IP_BUF->destipaddr)) != NULL) {
+    /* Use the context prefix only if it is already set to use it. */
+    if((iphc1 & SICSLOWPAN_IPHC_CID) &&
+       ((context = uip_ds6_context_pref_lookup(&UIP_IP_BUF->destipaddr))
+        != NULL)) {
       /* elide the prefix */
       iphc1 |= SICSLOWPAN_IPHC_DAC;
-      PACKETBUF_IPHC_BUF[2] |= context->number;
-      /* compession compare with link adress (destination) */
+      PACKETBUF_IPHC_BUF[2] |= context->cid;
+      /* compression compare with link adress (destination) */
 
       iphc1 |= compress_addr_64(SICSLOWPAN_IPHC_DAM_BIT,
                                 &UIP_IP_BUF->destipaddr,
@@ -883,12 +863,17 @@ compress_hdr_iphc(linkaddr_t *link_destaddr)
   uncomp_hdr_len = UIP_IPH_LEN;
 
   /* Start of ext hdr compression or UDP compression */
-  /* pick out the next-header position */
-  next_hdr = &UIP_IP_BUF->proto;
+  /* pick out the next-header position - if compression is allowed */
+  if((iphc0 & SICSLOWPAN_IPHC_NH_C) > 0) {
+    next_hdr = &UIP_IP_BUF->proto;
+  } else {
+    LOG_DBG("IPHC: No next header compression\n");
+    next_hdr = NULL;
+  }
+
   next_nhc = hc06_ptr; /* here we set the next header is compressed. */
   ext_hdr_len = 0;
   /* reserve the write place of this next header position */
-  LOG_INFO("Compressing first header: %d\n", *next_hdr);
   while(next_hdr != NULL && IS_COMPRESSABLE_PROTO(*next_hdr)) {
     LOG_INFO("Compressing next header: %d\n", *next_hdr);
     int proto = -1; /* used for the specific ext hdr */
@@ -1040,6 +1025,7 @@ uncompress_hdr_iphc(uint8_t *buf, uint16_t ip_len)
   uint8_t* last_nextheader;
   uint8_t* ip_payload;
   uint8_t ext_hdr_len = 0;
+  uip_ds6_context_pref_t *context;
 
   /* at least two byte will be used for the encoding */
   hc06_ptr = packetbuf_ptr + packetbuf_hdr_len + 2;
@@ -1119,15 +1105,18 @@ uncompress_hdr_iphc(uint8_t *buf, uint16_t ip_len)
 
     /* Source address - check context != NULL only if SAM bits are != 0*/
     if (tmp != 0) {
-      context = addr_context_lookup_by_number(sci);
+      context = uip_ds6_context_pref_lookup_by_cid(sci);
       if(context == NULL) {
         LOG_ERR("uncompress_hdr: error context not found\n");
         return;
       }
+    } else {
+      /* if tmp == 0 we do not have a context and therefore no prefix */
+      context = NULL;
     }
-    /* if tmp == 0 we do not have a context and therefore no prefix */
     uncompress_addr(&SICSLOWPAN_IP_BUF(buf)->srcipaddr,
-                    tmp != 0 ? context->prefix : NULL, unc_ctxconf[tmp],
+                    context != NULL ? context->ipaddr.u8 : NULL,
+                    unc_ctxconf[tmp],
                     (uip_lladdr_t *)packetbuf_addr(PACKETBUF_ADDR_SENDER));
   } else {
     /* no compression and link local */
@@ -1164,14 +1153,15 @@ uncompress_hdr_iphc(uint8_t *buf, uint16_t ip_len)
     /* Context based */
     if(iphc1 & SICSLOWPAN_IPHC_DAC) {
       uint8_t dci = (iphc1 & SICSLOWPAN_IPHC_CID) ? PACKETBUF_IPHC_BUF[2] & 0x0f : 0;
-      context = addr_context_lookup_by_number(dci);
+      context = uip_ds6_context_pref_lookup_by_cid(dci);
 
       /* all valid cases below need the context! */
       if(context == NULL) {
         LOG_ERR("uncompress_hdr: error context not found\n");
         return;
       }
-      uncompress_addr(&SICSLOWPAN_IP_BUF(buf)->destipaddr, context->prefix,
+      uncompress_addr(&SICSLOWPAN_IP_BUF(buf)->destipaddr,
+                      (const uint8_t *)&context->ipaddr.u8,
                       unc_ctxconf[tmp],
                       (uip_lladdr_t *)packetbuf_addr(PACKETBUF_ADDR_RECEIVER));
     } else {
@@ -1539,6 +1529,9 @@ output(const linkaddr_t *localdest)
 #endif /* SICSLOWPAN_COMPRESSION >= SICSLOWPAN_COMPRESSION_IPHC */
   LOG_INFO("output: header of len %d\n", packetbuf_hdr_len);
 
+  /* uipbuf attributes have been handled. Make sure they are cleared. */
+  uipbuf_clear_attr();
+
   /* Calculate NETSTACK_FRAMER's header length, that will be added in the NETSTACK_MAC.
    * We calculate it here only to make a better decision of whether the outgoing packet
    * needs to be fragmented or not. */
@@ -1751,8 +1744,8 @@ input(void)
       frag_offset = 0;
       frag_size = GET16(PACKETBUF_FRAG_PTR, PACKETBUF_FRAG_DISPATCH_SIZE) & 0x07ff;
       frag_tag = GET16(PACKETBUF_FRAG_PTR, PACKETBUF_FRAG_TAG);
-      LOG_INFO("size %d, tag %d, offset %d)\n",
-             frag_size, frag_tag, frag_offset);
+      LOG_INFO_("size %d, tag %d, offset %d)\n",
+                frag_size, frag_tag, frag_offset);
       packetbuf_hdr_len += SICSLOWPAN_FRAG1_HDR_LEN;
       first_fragment = 1;
       is_fragment = 1;
@@ -1776,8 +1769,8 @@ input(void)
       frag_offset = PACKETBUF_FRAG_PTR[PACKETBUF_FRAG_OFFSET];
       frag_tag = GET16(PACKETBUF_FRAG_PTR, PACKETBUF_FRAG_TAG);
       frag_size = GET16(PACKETBUF_FRAG_PTR, PACKETBUF_FRAG_DISPATCH_SIZE) & 0x07ff;
-      LOG_INFO("size %d, tag %d, offset %d)\n",
-             frag_size, frag_tag, frag_offset);
+      LOG_INFO_("size %d, tag %d, offset %d)\n",
+                frag_size, frag_tag, frag_offset);
       packetbuf_hdr_len += SICSLOWPAN_FRAGN_HDR_LEN;
 
       /* If this is the last fragment, we may shave off any extrenous
@@ -1944,53 +1937,10 @@ input(void)
 void
 sicslowpan_init(void)
 {
+  uip_ds6_context_init();
 
-#if SICSLOWPAN_COMPRESSION == SICSLOWPAN_COMPRESSION_IPHC
-/* Preinitialize any address contexts for better header compression
- * (Saves up to 13 bytes per 6lowpan packet)
- * The platform contiki-conf.h file can override this using e.g.
- * #define SICSLOWPAN_CONF_ADDR_CONTEXT_0 {addr_contexts[0].prefix[0]=0xbb;addr_contexts[0].prefix[1]=0xbb;}
- */
-#if SICSLOWPAN_CONF_MAX_ADDR_CONTEXTS > 0
-  addr_contexts[0].used   = 1;
-  addr_contexts[0].number = 0;
-#ifdef SICSLOWPAN_CONF_ADDR_CONTEXT_0
-  SICSLOWPAN_CONF_ADDR_CONTEXT_0;
-#else
-  addr_contexts[0].prefix[0] = UIP_DS6_DEFAULT_PREFIX_0;
-  addr_contexts[0].prefix[1] = UIP_DS6_DEFAULT_PREFIX_1;
-#endif
-#endif /* SICSLOWPAN_CONF_MAX_ADDR_CONTEXTS > 0 */
-
-#if SICSLOWPAN_CONF_MAX_ADDR_CONTEXTS > 1
-  {
-    int i;
-    for(i = 1; i < SICSLOWPAN_CONF_MAX_ADDR_CONTEXTS; i++) {
-#ifdef SICSLOWPAN_CONF_ADDR_CONTEXT_1
-      if (i==1) {
-        addr_contexts[1].used   = 1;
-        addr_contexts[1].number = 1;
-        SICSLOWPAN_CONF_ADDR_CONTEXT_1;
-#ifdef SICSLOWPAN_CONF_ADDR_CONTEXT_2
-      } else if (i==2) {
-        addr_contexts[2].used   = 1;
-        addr_contexts[2].number = 2;
-        SICSLOWPAN_CONF_ADDR_CONTEXT_2;
-#endif
-      } else {
-        addr_contexts[i].used = 0;
-      }
-#else
-      addr_contexts[i].used = 0;
-#endif /* SICSLOWPAN_CONF_ADDR_CONTEXT_1 */
-    }
-  }
-#endif /* SICSLOWPAN_CONF_MAX_ADDR_CONTEXTS > 1 */
-
-#endif /* SICSLOWPAN_COMPRESSION == SICSLOWPAN_COMPRESSION_IPHC */
-
-  /* We use the queuebuf module if fragmentation is enabled */
 #if SICSLOWPAN_CONF_FRAG
+  /* We use the queuebuf module if fragmentation is enabled */
   queuebuf_init();
 #endif
 }

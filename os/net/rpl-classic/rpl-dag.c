@@ -49,6 +49,7 @@
 #include "net/ipv6/uip.h"
 #include "net/ipv6/uip-nd6.h"
 #include "net/ipv6/uip-ds6-nbr.h"
+#include "net/ipv6/uip-ds6-context.h"
 #include "net/nbr-table.h"
 #include "net/ipv6/multicast/uip-mcast6.h"
 #include "lib/list.h"
@@ -502,6 +503,9 @@ check_prefix(rpl_prefix_t *last_prefix, rpl_prefix_t *new_prefix)
       PRINT6ADDR(&ipaddr);
       PRINTF("\n");
       uip_ds6_addr_add(&ipaddr, 0, ADDR_AUTOCONF);
+      /* Update the prefixes in the prefix for 6lowpan */
+      uip_ds6_context_pref_rm_all();
+      uip_ds6_context_pref_add(&new_prefix->prefix, 64, 0);
     }
   }
 }
