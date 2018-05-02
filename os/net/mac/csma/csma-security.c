@@ -45,6 +45,7 @@
 #include "contiki.h"
 #include "net/mac/csma/csma.h"
 #include "net/mac/csma/anti-replay.h"
+#include "net/mac/csma/csma-security.h"
 #include "net/mac/framer/frame802154.h"
 #include "net/mac/framer/framer-802154.h"
 #include "net/netstack.h"
@@ -59,17 +60,7 @@
 #define LOG_MODULE "CSMA"
 #define LOG_LEVEL LOG_LEVEL_MAC
 
-#ifdef CSMA_CONF_LLSEC_MAXKEYS
-#define CSMA_LLSEC_MAXKEYS CSMA_CONF_LLSEC_MAXKEYS
-#else
-#define CSMA_LLSEC_MAXKEYS 1
-#endif
-
-/* TODO: this should be dynamic in a near future */
-#define SECURITY_LEVEL         5
-
-/* TODO: this should be dynamic in a near future */
-#define MIC_LEN         LLSEC802154_MIC_LEN(SECURITY_LEVEL)
+#define MIC_LEN LLSEC802154_MIC_LEN(CSMA_LLSEC_SECURITY_LEVEL)
 
 /* from the packetbuf - nonce code */
 void ccm_star_packetbuf_set_nonce(uint8_t *nonce, int forward);
@@ -221,7 +212,7 @@ csma_security_parse_frame(void)
             packetbuf_attr(PACKETBUF_ATTR_KEY_ID_MODE),
             packetbuf_attr(PACKETBUF_ATTR_KEY_INDEX));
 
-  if(packetbuf_attr(PACKETBUF_ATTR_SECURITY_LEVEL) != SECURITY_LEVEL) {
+  if(packetbuf_attr(PACKETBUF_ATTR_SECURITY_LEVEL) != CSMA_LLSEC_SECURITY_LEVEL) {
     LOG_INFO("received frame with wrong security level (%u) from ",
            packetbuf_attr(PACKETBUF_ATTR_SECURITY_LEVEL));
     LOG_INFO_LLADDR(packetbuf_addr(PACKETBUF_ADDR_SENDER));

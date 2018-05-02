@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007, Swedish Institute of Computer Science.
+ * Copyright (c) 2018, Tiny Mesh AS
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,48 +32,38 @@
 
 /**
  * \file
- *         The 802.15.4 standard CSMA protocol (nonbeacon-enabled)
+ *         LLSEC802154 Security related configuration
  * \author
- *         Adam Dunkels <adam@sics.se>
- *         Simon Duquennoy <simon.duquennoy@inria.fr>
+ *         Olav Frengstad <olav@tiny-mesh.com>
  */
 
-#ifndef CSMA_H_
-#define CSMA_H_
+#ifndef CSMA_SECURITY_H_
+#define CSMA_SECURITY_H_
 
-#include "contiki.h"
-#include "net/mac/mac.h"
-#include "dev/radio.h"
-#include "net/mac/llsec802154.h"
-#include "net/mac/csma/csma-security.h"
 
-#ifdef CSMA_CONF_SEND_SOFT_ACK
-#define CSMA_SEND_SOFT_ACK CSMA_CONF_SEND_SOFT_ACK
-#else /* CSMA_CONF_SEND_SOFT_ACK */
-#define CSMA_SEND_SOFT_ACK 0
-#endif /* CSMA_CONF_SEND_SOFT_ACK */
+#ifdef CSMA_CONF_LLSEC_SECURITY_LEVEL
+#define CSMA_LLSEC_SECURITY_LEVEL   CSMA_CONF_LLSEC_SECURITY_LEVEL
+#else
+#define CSMA_LLSEC_SECURITY_LEVEL   5
+#endif /* CSMA_CONF_LLSEC_SECURITY_LEVEL */
 
-#ifdef CSMA_CONF_ACK_WAIT_TIME
-#define CSMA_ACK_WAIT_TIME CSMA_CONF_ACK_WAIT_TIME
-#else /* CSMA_CONF_ACK_WAIT_TIME */
-#define CSMA_ACK_WAIT_TIME                      RTIMER_SECOND / 2500
-#endif /* CSMA_CONF_ACK_WAIT_TIME */
+#ifdef CSMA_CONF_LLSEC_KEY_ID_MODE      
+#define CSMA_LLSEC_KEY_ID_MODE   CSMA_CONF_LLSEC_KEY_ID_MODE
+#else
+#define CSMA_LLSEC_KEY_ID_MODE   FRAME802154_IMPLICIT_KEY
+#endif /* CSMA_CONF_LLSEC_KEY_ID_MODE */
 
-#ifdef CSMA_CONF_AFTER_ACK_DETECTED_WAIT_TIME
-#define CSMA_AFTER_ACK_DETECTED_WAIT_TIME CSMA_CONF_AFTER_ACK_DETECTED_WAIT_TIME
-#else /* CSMA_CONF_AFTER_ACK_DETECTED_WAIT_TIME */
-#define CSMA_AFTER_ACK_DETECTED_WAIT_TIME       RTIMER_SECOND / 1500
-#endif /* CSMA_CONF_AFTER_ACK_DETECTED_WAIT_TIME */
+#ifdef CSMA_CONF_LLSEC_KEY_INDEX
+#define CSMA_LLSEC_KEY_INDEX   CSMA_CONF_LLSEC_KEY_INDEX
+#else
+#define CSMA_LLSEC_KEY_INDEX   0
+#endif /* CSMA_CONF_LLSEC_KEY_INDEX */
 
-#define CSMA_ACK_LEN 3
+#ifdef CSMA_CONF_LLSEC_MAXKEYS
+#define CSMA_LLSEC_MAXKEYS CSMA_CONF_LLSEC_MAXKEYS
+#else
+#define CSMA_LLSEC_MAXKEYS 1
+#endif
 
-extern const struct mac_driver csma_driver;
+#endif /* CSMA_SECURITY_H_ */
 
-/* CSMA security framer functions */
-int csma_security_create_frame(void);
-int csma_security_parse_frame(void);
-
-/* key management for CSMA */
-void csma_security_set_key(uint8_t index, uint8_t *key);
-
-#endif /* CSMA_H_ */
