@@ -42,6 +42,11 @@
 static gpio_hal_pin_cfg_t pin_cfg[GPIO_HAL_PIN_COUNT];
 static uint8_t pin_state[GPIO_HAL_PIN_COUNT];
 /*---------------------------------------------------------------------------*/
+gpio_hal_arch_init(void)
+{
+  /* Do nothing */
+}
+/*---------------------------------------------------------------------------*/
 void
 gpio_hal_arch_init(void)
 {
@@ -49,7 +54,7 @@ gpio_hal_arch_init(void)
 }
 /*---------------------------------------------------------------------------*/
 void
-gpio_hal_arch_interrupt_enable(gpio_hal_pin_t pin)
+gpio_hal_arch_no_port_interrupt_enable(gpio_hal_pin_t pin)
 {
   if(pin >= GPIO_HAL_PIN_COUNT) {
     LOG_ERR("Pin %u out of bounds\n", pin);
@@ -60,7 +65,7 @@ gpio_hal_arch_interrupt_enable(gpio_hal_pin_t pin)
 }
 /*---------------------------------------------------------------------------*/
 void
-gpio_hal_arch_interrupt_disable(gpio_hal_pin_t pin)
+gpio_hal_arch_no_port_interrupt_disable(gpio_hal_pin_t pin)
 {
   if(pin >= GPIO_HAL_PIN_COUNT) {
     LOG_ERR("Pin %u out of bounds\n", pin);
@@ -71,7 +76,7 @@ gpio_hal_arch_interrupt_disable(gpio_hal_pin_t pin)
 }
 /*---------------------------------------------------------------------------*/
 void
-gpio_hal_arch_pin_cfg_set(gpio_hal_pin_t pin, gpio_hal_pin_cfg_t cfg)
+gpio_hal_arch_no_port_pin_cfg_set(gpio_hal_pin_t pin, gpio_hal_pin_cfg_t cfg)
 {
   if(pin >= GPIO_HAL_PIN_COUNT) {
     LOG_ERR("Pin %u out of bounds\n", pin);
@@ -83,7 +88,7 @@ gpio_hal_arch_pin_cfg_set(gpio_hal_pin_t pin, gpio_hal_pin_cfg_t cfg)
 }
 /*---------------------------------------------------------------------------*/
 gpio_hal_pin_cfg_t
-gpio_hal_arch_pin_cfg_get(gpio_hal_pin_t pin)
+gpio_hal_arch_no_port_pin_cfg_get(gpio_hal_pin_t pin)
 {
   if(pin >= GPIO_HAL_PIN_COUNT) {
     LOG_ERR("Pin %u out of bounds\n", pin);
@@ -95,7 +100,7 @@ gpio_hal_arch_pin_cfg_get(gpio_hal_pin_t pin)
 }
 /*---------------------------------------------------------------------------*/
 void
-gpio_hal_arch_pin_set_input(gpio_hal_pin_t pin)
+gpio_hal_arch_no_port_pin_set_input(gpio_hal_pin_t pin)
 {
   if(pin >= GPIO_HAL_PIN_COUNT) {
     LOG_ERR("Pin %u out of bounds\n", pin);
@@ -106,7 +111,7 @@ gpio_hal_arch_pin_set_input(gpio_hal_pin_t pin)
 }
 /*---------------------------------------------------------------------------*/
 void
-gpio_hal_arch_pin_set_output(gpio_hal_pin_t pin)
+gpio_hal_arch_no_port_pin_set_output(gpio_hal_pin_t pin)
 {
   if(pin >= GPIO_HAL_PIN_COUNT) {
     LOG_ERR("Pin %u out of bounds\n", pin);
@@ -117,7 +122,7 @@ gpio_hal_arch_pin_set_output(gpio_hal_pin_t pin)
 }
 /*---------------------------------------------------------------------------*/
 void
-gpio_hal_arch_set_pin(gpio_hal_pin_t pin)
+gpio_hal_arch_no_port_set_pin(gpio_hal_pin_t pin)
 {
   if(pin >= GPIO_HAL_PIN_COUNT) {
     LOG_ERR("Pin %u out of bounds\n", pin);
@@ -129,7 +134,7 @@ gpio_hal_arch_set_pin(gpio_hal_pin_t pin)
 }
 /*---------------------------------------------------------------------------*/
 void
-gpio_hal_arch_clear_pin(gpio_hal_pin_t pin)
+gpio_hal_arch_no_port_clear_pin(gpio_hal_pin_t pin)
 {
   if(pin >= GPIO_HAL_PIN_COUNT) {
     LOG_ERR("Pin %u out of bounds\n", pin);
@@ -141,7 +146,7 @@ gpio_hal_arch_clear_pin(gpio_hal_pin_t pin)
 }
 /*---------------------------------------------------------------------------*/
 uint8_t
-gpio_hal_arch_read_pin(gpio_hal_pin_t pin)
+gpio_hal_arch_no_port_read_pin(gpio_hal_pin_t pin)
 {
   if(pin >= GPIO_HAL_PIN_COUNT) {
     LOG_ERR("Pin %u out of bounds\n", pin);
@@ -153,7 +158,7 @@ gpio_hal_arch_read_pin(gpio_hal_pin_t pin)
 }
 /*---------------------------------------------------------------------------*/
 void
-gpio_hal_arch_write_pin(gpio_hal_pin_t pin, uint8_t value)
+gpio_hal_arch_no_port_write_pin(gpio_hal_pin_t pin, uint8_t value)
 {
   if(pin >= GPIO_HAL_PIN_COUNT) {
     LOG_ERR("Pin %u out of bounds\n", pin);
@@ -165,7 +170,7 @@ gpio_hal_arch_write_pin(gpio_hal_pin_t pin, uint8_t value)
 }
 /*---------------------------------------------------------------------------*/
 void
-gpio_hal_arch_set_pins(gpio_hal_pin_mask_t pins)
+gpio_hal_arch_no_port_set_pins(gpio_hal_pin_mask_t pins)
 {
   gpio_hal_pin_t pin;
 
@@ -179,7 +184,7 @@ gpio_hal_arch_set_pins(gpio_hal_pin_mask_t pins)
 }
 /*---------------------------------------------------------------------------*/
 void
-gpio_hal_arch_clear_pins(gpio_hal_pin_mask_t pins)
+gpio_hal_arch_no_port_clear_pins(gpio_hal_pin_mask_t pins)
 {
   gpio_hal_pin_t pin;
 
@@ -193,7 +198,7 @@ gpio_hal_arch_clear_pins(gpio_hal_pin_mask_t pins)
 }
 /*---------------------------------------------------------------------------*/
 gpio_hal_pin_mask_t
-gpio_hal_arch_read_pins(gpio_hal_pin_mask_t pins)
+gpio_hal_arch_no_port_read_pins(gpio_hal_pin_mask_t pins)
 {
   gpio_hal_pin_t pin;
   gpio_hal_pin_mask_t state = 0;
@@ -207,7 +212,8 @@ gpio_hal_arch_read_pins(gpio_hal_pin_mask_t pins)
 }
 /*---------------------------------------------------------------------------*/
 void
-gpio_hal_arch_write_pins(gpio_hal_pin_mask_t pins, gpio_hal_pin_mask_t value)
+gpio_hal_arch_no_port_write_pins(gpio_hal_pin_mask_t pins,
+                                 gpio_hal_pin_mask_t value)
 {
   gpio_hal_pin_t pin;
 
