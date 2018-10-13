@@ -68,8 +68,10 @@
 /* Path to headers with implementation of mutexes and memory barriers */
 #define MUTEX_CONF_ARCH_HEADER_PATH          "mutex-cortex.h"
 #define MEMORY_BARRIER_CONF_ARCH_HEADER_PATH "memory-barrier-cortex.h"
-
+/*---------------------------------------------------------------------------*/
 #define GPIO_HAL_CONF_ARCH_HDR_PATH          "dev/gpio-hal-arch.h"
+#define GPIO_HAL_CONF_ARCH_SW_TOGGLE         1
+#define GPIO_HAL_CONF_PORT_PIN_NUMBERING     0
 /*---------------------------------------------------------------------------*/
 #endif /* CC2538_DEF_H_ */
 /*---------------------------------------------------------------------------*/
