@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2018, Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (c) 2017, George Oikonomou - http://www.spd.gr
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
+ *
  * 1. Redistributions of source code must retain the above copyright
  *    notice, this list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright
@@ -27,48 +28,53 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
  * OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+/*---------------------------------------------------------------------------*/
 /**
- * \addtogroup cc13xx-cc26xx-cpu
+ * \addtogroup EFR32
  * @{
  *
- * \defgroup cc13xx-cc26xx-gpio-hal CC13xx/CC26xx GPIO HAL implementation
+ * \defgroup efr32-interrupts EFR32 master interrupt manipulation
+ *
+ * Master interrupt manipulation routines for the EFR32 CPU
  *
  * @{
  *
  * \file
- *        Header file for the CC13xx/CC26xx GPIO HAL functions.
- * \author
- *        Edvard Pettersen <e.pettersen@ti.com>
- * \note
- *        Do not include this header directly.
+ * Master interrupt manipulation implementation for the EFR32
  */
 /*---------------------------------------------------------------------------*/
-#ifndef GPIO_HAL_ARCH_H_
-#define GPIO_HAL_ARCH_H_
-/*---------------------------------------------------------------------------*/
 #include "contiki.h"
+#include "sys/int-master.h"
+#include "em_core.h"
+#include <stdbool.h>
 /*---------------------------------------------------------------------------*/
-#include <ti/devices/DeviceFamily.h>
-#include DeviceFamily_constructPath(driverlib/gpio.h)
-
-#include <ti/drivers/pin/PINCC26XX.h>
+void
+int_master_enable(void)
+{
+  __enable_irq();
+}
 /*---------------------------------------------------------------------------*/
-#define gpio_hal_arch_pin_set_input(port, pin)  PINCC26XX_setOutputEnable(pin, false)
-#define gpio_hal_arch_pin_set_output(port, pin) PINCC26XX_setOutputEnable(pin, true)
+int_master_status_t
+int_master_read_and_disable(void)
+{
+  int_master_status_t primask = __get_PRIMASK();
 
-#define gpio_hal_arch_set_pin(port, pin)        PINCC26XX_setOutputValue(pin, 1)
-#define gpio_hal_arch_clear_pin(port, pin)      PINCC26XX_setOutputValue(pin, 0)
-#define gpio_hal_arch_toggle_pin(port, pin)     PINCC26XX_setOutputValue(pin, \
-                                                  PINCC26XX_getOutputValue(pin) \
-                                                  ? 0 : 1)
-#define gpio_hal_arch_write_pin(port, pin, v)   PINCC26XX_setOutputValue(pin, v)
+  __disable_irq();
 
-#define gpio_hal_arch_set_pins(port, pin)       GPIO_setMultiDio(pin)
-#define gpio_hal_arch_clear_pins(port, pin)     GPIO_clearMultiDio(pin)
-#define gpio_hal_arch_toggle_pins(port, pin)    GPIO_toggleMultiDio(pin)
-#define gpio_hal_arch_write_pins(port, pin, v)  GPIO_writeMultiDio(pin, v)
+  return primask;
+}
 /*---------------------------------------------------------------------------*/
-#endif /* GPIO_HAL_ARCH_H_ */
+void
+int_master_status_set(int_master_status_t status)
+{
+  __set_PRIMASK(status);
+}
+/*---------------------------------------------------------------------------*/
+bool
+int_master_is_enabled(void)
+{
+  return __get_PRIMASK() ? false : true;
+}
 /*---------------------------------------------------------------------------*/
 /**
  * @}

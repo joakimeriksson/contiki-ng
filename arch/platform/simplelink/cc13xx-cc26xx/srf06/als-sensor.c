@@ -74,14 +74,14 @@ config(int type, int enable)
     return init();
 
   case SENSORS_ACTIVE:
-    gpio_hal_arch_pin_set_output(Board_ALS_PWR);
-    gpio_hal_arch_pin_set_input(Board_ALS_OUT);
+    gpio_hal_arch_pin_set_output(GPIO_HAL_NULL_PORT, Board_ALS_PWR);
+    gpio_hal_arch_pin_set_input(GPIO_HAL_NULL_PORT, Board_ALS_OUT);
 
     if(enable) {
-      gpio_hal_arch_set_pin(Board_ALS_PWR);
+      gpio_hal_arch_set_pin(GPIO_HAL_NULL_PORT, Board_ALS_PWR);
       clock_delay_usec(2000);
     } else {
-      gpio_hal_arch_clear_pin(Board_ALS_PWR);
+      gpio_hal_arch_clear_pin(GPIO_HAL_NULL_PORT, Board_ALS_PWR);
     }
     break;
 
