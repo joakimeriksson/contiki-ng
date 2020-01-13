@@ -71,6 +71,7 @@ CFLAGS += -D$(PART_NUMBER) \
 LDFLAGS += -L $(CONTIKI_CPU) \
            -Wl,--start-group \
            -nostartfiles \
+           -lm \
            $(CFLAGS)
 
 include $(CONTIKI)/$(CONTIKI_NG_CM4_DIR)/Makefile.cm4

@@ -28,6 +28,7 @@
  * OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "board.h"
 #include "em_device.h"
 #include "em_gpio.h"
 #include "em_cmu.h"
@@ -60,6 +61,7 @@ i2c_hal_bus_t i2c1_bus = {
   },
 };
 
+
 /*---------------------------------------------------------------------------*/
 void
 board_init(void)
@@ -68,6 +70,15 @@ board_init(void)
   /* GPIO_PinModeSet(VCOM_ENABLE_PORT, VCOM_ENABLE_PIN, gpioModePushPull, 1); */
   gpio_hal_arch_pin_set_output(VCOM_ENABLE_PORT,  VCOM_ENABLE_PIN);
   gpio_hal_arch_set_pin(VCOM_ENABLE_PORT, VCOM_ENABLE_PIN);
+
+  printf("Enable MIC\n");
+  if (1) {
+    GPIO_PinOutSet(BOARD_MIC_ENABLE_PORT, BOARD_MIC_ENABLE_PIN);
+  } else {
+    GPIO_PinOutClear(BOARD_MIC_ENABLE_PORT, BOARD_MIC_ENABLE_PIN);
+  }
+
+  printf("MIC enabled\n");
 
   rgbleds_init();
 }

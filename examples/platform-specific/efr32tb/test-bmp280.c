@@ -33,6 +33,7 @@
 #include "bmp-280-sensor.h"
 #include "rgbleds.h"
 #include <stdbool.h>
+#include "mic.h"
 /*---------------------------------------------------------------------------*/
 #include "sys/log.h"
 #define LOG_MODULE "App"
@@ -41,33 +42,48 @@
 PROCESS(test_process, "BMP280 tester");
 AUTOSTART_PROCESSES(&test_process);
 /*---------------------------------------------------------------------------*/
+static uint16_t buffer[2048];
+
 PROCESS_THREAD(test_process, ev, data)
 {
   static struct etimer periodic_timer;
   static int enable = 0;
+  float var;
+  float mean;
+  float level;
   int32_t temp;
   uint32_t pressure;
 
   PROCESS_BEGIN();
 
   etimer_set(&periodic_timer, CLOCK_SECOND);
+
+  MIC_init(32000, buffer, 2048);
+  MIC_start(2048);
+
   while(true) {
     PROCESS_WAIT_EVENT();
 
     if(ev == PROCESS_EVENT_TIMER) {
+
       temp = bmp_280_sensor.value(BMP_280_SENSOR_TYPE_TEMP);
       pressure = bmp_280_sensor.value(BMP_280_SENSOR_TYPE_PRESS);
-
-      LOG_INFO("Time: %6lu  Temp: %2"PRId32".%03"PRId32"  Pressure: %4"PRIu32".%03"PRIu32"\n",
+      mean = MIC_getMean() + 1.123;
+      level = MIC_getSoundLevel(&var);
+      LOG_INFO("Time: %6lu  Temp: %2"PRId32".%03"PRId32"  Pressure: %4"PRIu32".%03"PRIu32"  Mean: %d.%03d SoundLevel: %d.%03d Var: %d.%03d\n",
                (unsigned long)clock_time(), (temp / 1000), (temp % 1000),
-               (pressure / 1000), (pressure % 1000));
+               (pressure / 1000), (pressure % 1000),
+               (int)(mean), ((int)(mean * 1000)) % 1000,
+               (int)(level), ((int)(level * 1000)) % 1000,
+               (int)(var), ((int)(var * 1000)) % 1000
+               );
 
       rgbleds_enable(enable++ & 0xf);
 
       rgbleds_setcolor((clock_time() >> 0) & 0xffff,
                        (clock_time() >> 2) & 0xffff,
                        (clock_time() >> 4) & 0xffff);
-
+      MIC_start(2048);
       etimer_restart(&periodic_timer);
     }
 
