@@ -154,6 +154,9 @@
 #define MIC_CONFIG_ADC_ACQ_TIME         adcAcqTime1
 #define MIC_CONFIG_ADC_CLOCK_FREQ       1000000
 
+/* define use NATIVE_API */
+#define EMDRV_DMADRV_USE_NATIVE_API
+
 #define MIC_CONFIG_USE_LETIMER          0
 
 #if MIC_CONFIG_USE_LETIMER

@@ -72,6 +72,19 @@ static bool dmaCompleteCallback(unsigned int channel, unsigned int sequenceNo, v
 
 /** @endcond */
 
+#define BOARD_OK 1
+
+uint32_t BOARD_micEnable(bool enable)
+{
+  if ( enable ) {
+    GPIO_PinOutSet(BOARD_MIC_ENABLE_PORT, BOARD_MIC_ENABLE_PIN);
+  } else {
+    GPIO_PinOutClear(BOARD_MIC_ENABLE_PORT, BOARD_MIC_ENABLE_PIN);
+  }
+
+  return BOARD_OK;
+}
+
 /***************************************************************************//**
  * @brief
  *    Initializes MEMS microphone and sets up the DMA, ADC and clocking
@@ -93,7 +106,12 @@ uint32_t MIC_init(uint32_t fs, uint16_t *buffer, size_t len)
   uint32_t status;
   USART_InitI2s_TypeDef usartInit = USART_INITI2S_DEFAULT;
 
-  /* Assume mic is enabled for now */
+
+  /* Enable microphone circuit and wait for it to settle properly */
+  status = BOARD_micEnable(true);
+  if ( status != BOARD_OK ) {
+    return status;
+  }
 
   /* Enable clocks */
   CMU_ClockEnable(cmuClock_GPIO, true);
@@ -177,6 +195,9 @@ void MIC_deInit(void)
   GPIO_PinModeSet(MIC_PORT_CLK, MIC_PIN_CLK, gpioModeDisabled, 0);
   GPIO_PinModeSet(MIC_PORT_DATA, MIC_PIN_DATA, gpioModeDisabled, 0);
   GPIO_PinModeSet(MIC_PORT_WS, MIC_PIN_WS, gpioModeDisabled, 0);
+
+  /* Power down microphone */
+  BOARD_micEnable(false);
 
   /* Free resources */
   DMADRV_FreeChannel(dmaChannelLeft);
