@@ -71,14 +71,19 @@ board_init(void)
   gpio_hal_arch_pin_set_output(VCOM_ENABLE_PORT,  VCOM_ENABLE_PIN);
   gpio_hal_arch_set_pin(VCOM_ENABLE_PORT, VCOM_ENABLE_PIN);
 
-  printf("Enable MIC\n");
-  if (1) {
-    GPIO_PinOutSet(BOARD_MIC_ENABLE_PORT, BOARD_MIC_ENABLE_PIN);
-  } else {
-    GPIO_PinOutClear(BOARD_MIC_ENABLE_PORT, BOARD_MIC_ENABLE_PIN);
-  }
+  /*********************************************************************/
+  /** Microphone pin config                                           **/
+  /*********************************************************************/
+  gpio_hal_arch_pin_set_output(BOARD_MIC_ENABLE_PORT, BOARD_MIC_ENABLE_PIN);
+  /* Not supported by the gpio hal? */
+  GPIO_PinModeSet(BOARD_MIC_INPUT_PORT, BOARD_MIC_INPUT_PIN, gpioModeDisabled, 0);
 
-  printf("MIC enabled\n");
+  /* printf("Enable MIC\n"); */
+  /* if (1) { */
+  /*   GPIO_PinOutSet(BOARD_MIC_ENABLE_PORT, BOARD_MIC_ENABLE_PIN); */
+  /* } else { */
+  /*   GPIO_PinOutClear(BOARD_MIC_ENABLE_PORT, BOARD_MIC_ENABLE_PIN); */
+  /* } */
 
   rgbleds_init();
 }

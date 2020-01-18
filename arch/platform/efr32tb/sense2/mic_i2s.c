@@ -341,8 +341,6 @@ static bool dmaCompleteCallback(unsigned int channel, unsigned int sequenceNo, v
 {
   LDMA_Descriptor_t *nextDesc;
 
-  printf("DMA: ready? %d [%d,%d\n", sampleBufferReady, sampleBuffer[0], sampleBuffer[1]);
-
   if ( !sampleBufferReady ) {
     /* Setup next descriptor */
     if ( sequenceNo & 0x01 ) {
