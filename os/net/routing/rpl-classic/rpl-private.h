@@ -150,7 +150,9 @@
 #define RPL_ROUTE_INFINITE_LIFETIME           0xFFFFFFFF
 
 #define RPL_LIFETIME(instance, lifetime) \
-          (((lifetime) == RPL_INFINITE_LIFETIME) ? RPL_ROUTE_INFINITE_LIFETIME : (unsigned long)(instance)->lifetime_unit * (lifetime))
+          (((lifetime) == RPL_INFINITE_LIFETIME) ? \
+              RPL_ROUTE_INFINITE_LIFETIME : \
+              (unsigned long)(instance)->lifetime_unit * (lifetime))
 
 
 #ifndef RPL_CONF_MIN_HOPRANKINC
@@ -341,6 +343,9 @@ rpl_of_t *rpl_find_of(rpl_ocp_t);
 void rpl_schedule_dao(rpl_instance_t *);
 void rpl_schedule_dao_immediately(rpl_instance_t *);
 void rpl_schedule_unicast_dio_immediately(rpl_instance_t *instance);
+void rpl_schedule_unicast_dao_immediately(
+    rpl_instance_t *instance, rpl_parent_t *parent,
+    uip_ipaddr_t *prefix, uint8_t lifetime);
 void rpl_cancel_dao(rpl_instance_t *instance);
 void rpl_schedule_probing(rpl_instance_t *instance);
 void rpl_schedule_probing_now(rpl_instance_t *instance);

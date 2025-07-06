@@ -97,14 +97,13 @@ tcpip_handler(void)
       trickle_timer_inconsistency(&tt);
 
       /*
-       * Here tt.ct.etimer.timer.{start + interval} points to time t in the
-       * current interval. However, between t and I it points to the interval's
-       * end so if you're going to use this, do so with caution.
+       * Here the timer expiration time points to time t in the current
+       * interval. However, between t and I it points to the interval's end so
+       * if you're going to use this, do so with caution.
        */
       PRINTF("At %lu: Trickle inconsistency. Scheduled TX for %lu\n",
              (unsigned long)clock_time(),
-             (unsigned long)(tt.ct.etimer.timer.start +
-                             tt.ct.etimer.timer.interval));
+             (unsigned long)ctimer_expiration_time(&tt.ct));
     }
   }
   return;
@@ -150,6 +149,11 @@ PROCESS_THREAD(trickle_protocol_process, ev, data)
   uip_create_linklocal_allnodes_mcast(&ipaddr); /* Store for later */
 
   trickle_conn = udp_new(NULL, UIP_HTONS(TRICKLE_PROTO_PORT), NULL);
+  if(trickle_conn == NULL) {
+    PRINTF("No UDP connection available, exiting the process!\n");
+    PROCESS_EXIT();
+  }
+
   udp_bind(trickle_conn, UIP_HTONS(TRICKLE_PROTO_PORT));
 
   PRINTF("Connection: local/remote port %u/%u\n",

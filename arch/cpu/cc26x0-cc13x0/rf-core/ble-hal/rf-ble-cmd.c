@@ -45,6 +45,7 @@
 #include "rf_ble_cmd.h"
 #include "rf-core/rf-core.h"
 #include "rf-core/ble-hal/rf-ble-cmd.h"
+#include <inttypes.h>
 
 /*---------------------------------------------------------------------------*/
 #include "sys/log.h"
@@ -521,8 +522,7 @@ rf_ble_cmd_add_data_queue_entry(dataQueue_t *q, uint8_t *e)
   cmd.pEntry = e;
 
   if(rf_core_send_cmd((uint32_t)&cmd, &cmdsta) != RF_CORE_CMD_OK) {
-    LOG_ERR("could not add entry to data queue. status: 0x%04X\n",
-            CMD_GET_STATUS(&cmd));
+    LOG_ERR("could not add entry to data queue. status: 0x%04" PRIX32 "\n", cmdsta);
     return RF_BLE_CMD_ERROR;
   }
   return RF_BLE_CMD_OK;

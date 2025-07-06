@@ -38,9 +38,7 @@
  */
 
 #include <signal.h>
-#ifndef _WIN32
 #include <sys/time.h>
-#endif /* !_WIN32 */
 #include <stddef.h>
 
 #include "sys/rtimer.h"
@@ -65,28 +63,25 @@ interrupt(int sig)
 void
 rtimer_arch_init(void)
 {
-#ifndef _WIN32
   signal(SIGALRM, interrupt);
-#endif /* !_WIN32 */
 }
 /*---------------------------------------------------------------------------*/
 void
 rtimer_arch_schedule(rtimer_clock_t t)
 {
-#ifndef _WIN32
   struct itimerval val;
   rtimer_clock_t c;
 
-  c = t - clock_time();
-  
-  val.it_value.tv_sec = c / CLOCK_SECOND;
-  val.it_value.tv_usec = (c % CLOCK_SECOND) * CLOCK_SECOND;
+  c = t - rtimer_arch_now();
 
-  PRINTF("rtimer_arch_schedule time %"PRIu32 " %"PRIu32 " in %ld.%ld seconds\n",
+  val.it_value.tv_sec = c / RTIMER_SECOND;
+  val.it_value.tv_usec = (c % RTIMER_SECOND) * RTIMER_SECOND;
+
+  PRINTF("rtimer_arch_schedule time %" RTIMER_PRI " %" RTIMER_PRI
+         " in %ld.%ld seconds\n",
          t, c, (long)val.it_value.tv_sec, (long)val.it_value.tv_usec);
 
   val.it_interval.tv_sec = val.it_interval.tv_usec = 0;
   setitimer(ITIMER_REAL, &val, NULL);
-#endif /* !_WIN32 */
 }
 /*---------------------------------------------------------------------------*/

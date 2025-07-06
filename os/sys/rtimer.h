@@ -55,6 +55,7 @@
 
 #include "contiki.h"
 #include "dev/watchdog.h"
+#include <inttypes.h>
 #include <stdbool.h>
 
 /*---------------------------------------------------------------------------*/
@@ -71,16 +72,19 @@
 /* 16-bit rtimer */
 typedef uint16_t rtimer_clock_t;
 #define RTIMER_CLOCK_DIFF(a,b)     ((int16_t)((a)-(b)))
+#define RTIMER_PRI PRIu16
 
 #elif RTIMER_CLOCK_SIZE == 4
 /* 32-bit rtimer */
 typedef uint32_t rtimer_clock_t;
 #define RTIMER_CLOCK_DIFF(a, b)    ((int32_t)((a) - (b)))
+#define RTIMER_PRI PRIu32
 
 #elif RTIMER_CLOCK_SIZE == 8
 /* 64-bit rtimer */
 typedef uint64_t rtimer_clock_t;
 #define RTIMER_CLOCK_DIFF(a,b)     ((int64_t)((a)-(b)))
+#define RTIMER_PRI PRIu64
 
 #else
 #error Unsupported rtimer size (check RTIMER_CLOCK_SIZE)
@@ -117,8 +121,10 @@ typedef uint64_t rtimer_clock_t;
  *             This function initializes the real-time scheduler and
  *             must be called at boot-up, before any other functions
  *             from the real-time scheduler is called.
+ *
+ * \hideinitializer
  */
-void rtimer_init(void);
+#define rtimer_init() rtimer_arch_init()
 
 struct rtimer;
 typedef void (* rtimer_callback_t)(struct rtimer *t, void *ptr);
@@ -255,9 +261,10 @@ void rtimer_arch_schedule(rtimer_clock_t t);
 /*
  * Return the current time in rtimer ticks.
  *
- * Currently rtimer_arch_now() needs to be defined in rtimer-arch.h
+ * Currently rtimer-arch.h needs to define:
+ *
+ * rtimer_clock_t rtimer_arch_now(void);
  */
-/* rtimer_clock_t rtimer_arch_now(void); */
 
 /** @} */
 
