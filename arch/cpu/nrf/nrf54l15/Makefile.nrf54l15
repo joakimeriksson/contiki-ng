@@ -1,0 +1,103 @@
+# nRF54L15 Cortex-M33 application core support (minimal bring-up)
+
+include $(CONTIKI_CPU)/Makefile.libs
+
+CPU_ARCH     = arm
+CPU_CORE     = cortex-m/cm33
+
+NRF54L15_MDK_DIR := $(CONTIKI_CPU)/nrf54l15/mdk
+
+CFLAGS += -DNRF54L15_XXAA
+CFLAGS += -DNRF_APPLICATION
+CFLAGS += -DCPU_CONF_PATH=\"nrf54l15-conf.h\"
+CFLAGS += -DCPU_DEF_PATH=\"nrf54l15-def.h\"
+CFLAGS += -I$(NRF54L15_MDK_DIR)
+# Suppress unused variable warnings in nrfx v3.x HAL layer for nRF54L15
+CFLAGS += -Wno-unused-variable
+
+NRF54L15_MDK_SRCS     += $(NRF54L15_MDK_DIR)/system_nrf54l.c
+NRF54L15_MDK_ASM_SRCS += $(NRF54L15_MDK_DIR)/gcc_startup_nrf54l15.S
+
+CONTIKI_CPU_DIRS += nrf54l15
+
+EXTERNALDIRS += $(NRF54L15_MDK_DIR)
+EXTERNALDIRS += $(NRFX_ROOT)/mdk
+
+NRFX_C_SRCS   += $(NRF54L15_MDK_SRCS)
+NRFX_ASM_SRCS += $(NRF54L15_MDK_ASM_SRCS)
+
+LDSCRIPT ?= $(NRF54L15_MDK_DIR)/nrf54l15_xxaa.ld
+LDFLAGS += -L$(NRF54L15_MDK_DIR)
+
+include $(CONTIKI)/$(CONTIKI_NG_CM33_DIR)/Makefile.cm33
+
+include $(CONTIKI_CPU)/Makefile.nrf
+
+# Override upload/flash targets from Makefile.nrf for nRF54L15 with OpenOCD
+# XIAO nRF54L15 uses onboard CMSIS-DAP (SAMD11)
+NRFJPROG ?= nrfjprog
+JLINKEXE ?= JLinkExe
+NRFUTIL ?= nrfutil
+NRFUTIL_SERIAL ?=
+
+# Generate hex and flash for nRF54L15
+# Usage: make TARGET=nrf BOARD=nrf54l15/xiao hello-world.flash
+%.flash %.upload: $(OUT_HEX)
+ifneq (, $(shell which openocd))
+	@echo "Flashing with OpenOCD via CMSIS-DAP..."
+	openocd -f $(PLATFORM_ROOT_DIR)/nrf54l15/xiao/support/openocd.cfg \
+		-c "init; reset halt; nrf54l-load $<; verify_image $<; reset run; shutdown"
+else ifneq (, $(shell which $(JLINKEXE)))
+	@echo "Flashing with J-Link (JLinkExe)..."
+	@echo "erase\nloadfile $<\nr\ng\nexit\n" | $(JLINKEXE) -device NRF54L15_XXAA -if SWD -speed 4000 -autoconnect 1
+else ifneq (, $(shell which $(NRFJPROG)))
+	@echo "Flashing with J-Link (nrfjprog) for debugging support..."
+	$(NRFJPROG) $(NRFJPROG_OPTIONS) --program $< --chiperase --verify --reset
+else ifneq (, $(shell which $(NRFUTIL)))
+	@echo "Flashing with nrfutil..."
+	$(NRFUTIL) device program --firmware $< \
+		$(if $(NRFUTIL_SERIAL),--serial-number $(NRFUTIL_SERIAL),--traits usb) \
+		--options chip_erase_mode=ERASE_ALL,verify=VERIFY_READ,reset=RESET_SYSTEM
+else
+	@echo "Error: No flashing tool found. Please install one of:"
+	@echo "  - openocd: brew install openocd (macOS) or apt-get install openocd (Linux)"
+	@echo "  - JLinkExe: Install J-Link Software Pack"
+	@echo "  - nrfjprog: Install nRF Command Line Tools"
+	@echo "  - nrfutil: pip install nrfutil"
+	@false
+endif
+
+# Generate hex file from elf
+$(OUT_HEX): $(BUILD_DIR_BOARD)/%.$(TARGET)
+	$(Q)mkdir -p $(dir $@)
+	$(Q)$(OBJCOPY) -O ihex $< $@
+	@echo "Generated hex file: $@"
+
+# Replace RTC-based clock driver with the GRTC implementation.
+CONTIKI_CPU_SOURCEFILES := $(filter-out clock-arch.c,$(CONTIKI_CPU_SOURCEFILES))
+CONTIKI_SOURCEFILES := $(filter-out clock-arch.c,$(CONTIKI_SOURCEFILES))
+CONTIKI_CPU_SOURCEFILES += clock-arch.c
+CONTIKI_SOURCEFILES += clock-arch.c
+
+# Replace default rtimer implementation with the GRTC version.
+CONTIKI_CPU_SOURCEFILES := $(filter-out rtimer-arch.c,$(CONTIKI_CPU_SOURCEFILES))
+CONTIKI_SOURCEFILES := $(filter-out rtimer-arch.c,$(CONTIKI_SOURCEFILES))
+CONTIKI_CPU_SOURCEFILES += rtimer-arch.c
+CONTIKI_SOURCEFILES += rtimer-arch.c
+
+# Swap NRFX RTC driver for GRTC.
+NRFX_C_SRCS := $(filter-out $(NRFX_ROOT)/drivers/src/nrfx_rtc.c,$(NRFX_C_SRCS))
+CONTIKI_SOURCEFILES := $(filter-out nrfx_rtc.c,$(CONTIKI_SOURCEFILES))
+NRFX_C_SRCS += $(NRFX_ROOT)/drivers/src/nrfx_grtc.c
+CONTIKI_SOURCEFILES += nrfx_grtc.c
+
+CFLAGS := $(filter-out -DNRFX_RTC_ENABLED,$(CFLAGS))
+CFLAGS := $(filter-out -DNRFX_RTC0_ENABLED,$(CFLAGS))
+CFLAGS += -DNRFX_GRTC_ENABLED=1
+
+# Exclude Radio driver for now (needs porting to nRF54L15 Radio peripheral)
+# Use stub implementation instead
+CONTIKI_CPU_SOURCEFILES := $(filter-out nrf-ieee-driver-arch.c,$(CONTIKI_CPU_SOURCEFILES))
+CONTIKI_SOURCEFILES := $(filter-out nrf-ieee-driver-arch.c,$(CONTIKI_SOURCEFILES))
+CONTIKI_CPU_SOURCEFILES += nrf-ieee-driver-stub.c
+CONTIKI_SOURCEFILES += nrf-ieee-driver-stub.c

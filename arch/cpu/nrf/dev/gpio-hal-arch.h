@@ -53,8 +53,18 @@
 
 #include "nrfx_gpiote.h"
 /*---------------------------------------------------------------------------*/
+/* nrfx v3.x API for nRF54L15, v2.x API for other platforms */
+#if defined(NRF54L15_XXAA)
+/* Forward declarations for helper functions defined in gpio-hal-arch.c */
+void gpio_hal_arch_interrupt_enable_nrf54l15(gpio_hal_port_t port, gpio_hal_pin_t pin);
+void gpio_hal_arch_interrupt_disable_nrf54l15(gpio_hal_port_t port, gpio_hal_pin_t pin);
+
+#define gpio_hal_arch_interrupt_enable(port, pin)  gpio_hal_arch_interrupt_enable_nrf54l15(port, pin)
+#define gpio_hal_arch_interrupt_disable(port, pin) gpio_hal_arch_interrupt_disable_nrf54l15(port, pin)
+#else
 #define gpio_hal_arch_interrupt_enable(port, pin)  nrfx_gpiote_in_event_enable(NRF_GPIO_PIN_MAP(port, pin), true)
 #define gpio_hal_arch_interrupt_disable(port, pin) nrfx_gpiote_in_event_disable(NRF_GPIO_PIN_MAP(port, pin))
+#endif
 /*---------------------------------------------------------------------------*/
 #define gpio_hal_arch_pin_set_input(port, pin)     nrf_gpio_cfg_input(NRF_GPIO_PIN_MAP(port, pin), NRF_GPIO_PIN_NOPULL)
 #define gpio_hal_arch_pin_set_output(port, pin)    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(port, pin))

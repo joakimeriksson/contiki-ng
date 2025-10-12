@@ -65,10 +65,19 @@ static uint8_t wdt_initialized = 0;
 /**
  * @brief WDT events handler.
  */
+#if defined(NRF54L15_XXAA)
+static void
+wdt_event_handler(nrf_wdt_event_t event_type, uint32_t requests, void *p_context)
+{
+  /* Event handler for nRF54L15 v3.x API */
+}
+#else
 static void
 wdt_event_handler(void)
 {
+  /* Event handler for v2.x API */
 }
+#endif
 /*---------------------------------------------------------------------------*/
 void
 watchdog_init(void)
@@ -78,7 +87,13 @@ watchdog_init(void)
 #endif /* WATCHDOG_ENABLE */
 
   nrfx_wdt_config_t config = NRFX_WDT_DEFAULT_CONFIG;
+
+#if defined(NRF54L15_XXAA)
+  /* v3.x API requires context parameter */
+  nrfx_err_t err_code = nrfx_wdt_init(&wdt, &config, &wdt_event_handler, NULL);
+#else
   nrfx_err_t err_code = nrfx_wdt_init(&wdt, &config, &wdt_event_handler);
+#endif
 
   if(err_code != NRFX_SUCCESS) {
     return;
