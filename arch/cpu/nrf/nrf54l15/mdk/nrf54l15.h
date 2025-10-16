@@ -139,7 +139,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #define P1_PIN_NUM P1_PIN_NUM_SIZE
 #endif
 #ifndef P2_PIN_NUM
-#define P2_PIN_NUM 0  /* P2 exists but has no accessible pins */
+#define P2_PIN_NUM P2_PIN_NUM_SIZE  /* P2 has 11 pins on nRF54L15 */
 #endif
 
 /* GPIOTE instance defines for nrfx driver */

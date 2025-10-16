@@ -166,6 +166,18 @@ _NVIC_SetPendingIRQ(IRQn_Type irq_number)
 
 /*------------------------------------------------------------------------------ */
 
+/**
+ * @brief Macro for counting trailing zeros.
+ *
+ * @param[in] value A word value.
+ *
+ * @return Number of trailing 0-bits in @p value, starting at the least significant bit position.
+ *         If x is 0, the result is undefined.
+ */
+#define NRFX_CTZ(value) __builtin_ctz(value)
+
+/*------------------------------------------------------------------------------ */
+
 #define NRFX_DELAY_US(us_time) nrfx_coredep_delay_us(us_time)
 
 /*------------------------------------------------------------------------------ */
