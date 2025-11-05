@@ -47,7 +47,6 @@ AUTOSTART_PROCESSES(&hello_world_process);
 PROCESS_THREAD(hello_world_process, ev, data)
 {
   static struct etimer timer;
-
   PROCESS_BEGIN();
 
   /* Setup a periodic timer that expires after 10 seconds. */

@@ -70,17 +70,17 @@ POSSIBILITY OF SUCH DAMAGE.
 #define DPPI_PRESENT 1
 #endif
 
-/* Define GRTC compatibility macros for HAL */
-#ifndef GRTC_IRQn
-#define GRTC_IRQn GRTC_0_IRQn
-#endif
-#ifndef GRTC_IRQ_GROUP
-#define GRTC_IRQ_GROUP 0
-#endif
-
 /* Define DPPI subscribe/publish enable bit */
 #ifndef NRF_SUBSCRIBE_PUBLISH_ENABLE
 #define NRF_SUBSCRIBE_PUBLISH_ENABLE (1UL << 31)
+#endif
+
+/* Define GRTC compatibility macros for the application domain */
+#ifndef GRTC_IRQn
+#define GRTC_IRQn GRTC_2_IRQn
+#endif
+#ifndef GRTC_IRQ_GROUP
+#define GRTC_IRQ_GROUP 2
 #endif
 
 #include "nrf54l15_types.h"
@@ -173,4 +173,3 @@ POSSIBILITY OF SUCH DAMAGE.
 }
 #endif
 #endif /* NRF54L15_H */
-

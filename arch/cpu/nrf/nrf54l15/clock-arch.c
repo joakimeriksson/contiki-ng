@@ -34,8 +34,11 @@ static volatile clock_time_t ticks;
 static uint32_t tick_interval_us;
 static nrfx_grtc_channel_t tick_channel;
 static bool is_initialized;
-volatile nrfx_err_t last_schedule_err;
+static volatile nrfx_err_t last_schedule_err;
+static volatile uint32_t schedule_failure_count;
+static nrfx_err_t init_error_code;
 volatile uint8_t tick_channel_id;
+static volatile uint32_t grtc_irq_count;
 
 static void schedule_next_tick(void);
 
@@ -55,6 +58,7 @@ grtc_tick_handler(int32_t id, uint64_t cc_value, void *context)
   (void)cc_value;
   (void)context;
 
+  grtc_irq_count++;
   clock_update();
   schedule_next_tick();
 }
@@ -80,7 +84,7 @@ schedule_next_tick(void)
   }
 
   if(err != NRFX_SUCCESS) {
-    return;
+    schedule_failure_count++;
   }
 }
 
@@ -105,31 +109,45 @@ clock_init(void)
   }
 
   ticks = 0;
-  tick_interval_us = GRTC_TICK_FREQUENCY_HZ / CLOCK_SECOND;
+  grtc_irq_count = 0;
+  schedule_failure_count = 0;
+  tick_interval_us = (uint32_t)(((uint64_t)GRTC_TICK_FREQUENCY_HZ +
+                                 (CLOCK_SECOND / 2)) / CLOCK_SECOND);
   if(tick_interval_us == 0) {
     tick_interval_us = 1;
   }
 
   lfclk_init();
 
+  init_error_code = NRFX_ERROR_INTERNAL;
+
   nrfx_err_t err = nrfx_grtc_init(GRTC_IRQ_PRIORITY);
   if(err != NRFX_SUCCESS && err != NRFX_ERROR_ALREADY) {
+    init_error_code = err;
     return;
   }
+
+  /* Ensure NVIC routes the interrupt to the Cortex-M33 core */
+  NVIC_SetPriority(GRTC_IRQn, GRTC_IRQ_PRIORITY);
+  NVIC_ClearPendingIRQ(GRTC_IRQn);
+  NVIC_EnableIRQ(GRTC_IRQn);
 
   /* Start the GRTC syscounter with busy wait (Zephyr approach)
    * This allocates a main CC channel automatically */
   uint8_t main_cc_channel = 0;
   err = nrfx_grtc_syscounter_start(true, &main_cc_channel);
   if(err != NRFX_SUCCESS && err != NRFX_ERROR_ALREADY) {
+    init_error_code = err;
     return;
   }
   wait_for_syscounter_ready();
+  nrfx_grtc_active_request_set(true);
 
   /* Now allocate a separate GRTC channel for our ticking */
   uint8_t channel = 0;
   err = nrfx_grtc_channel_alloc(&channel);
   if(err != NRFX_SUCCESS) {
+    init_error_code = err;
     return;
   }
 
@@ -144,6 +162,7 @@ clock_init(void)
   schedule_next_tick();
 
   is_initialized = true;
+  init_error_code = NRFX_SUCCESS;
 }
 
 clock_time_t
@@ -179,6 +198,55 @@ clock_delay(unsigned int i)
   clock_delay_usec(i);
 }
 
+uint32_t
+clock_arch_get_irq_count(void)
+{
+  return grtc_irq_count;
+}
+
+nrfx_err_t
+clock_arch_get_last_schedule_err(void)
+{
+  return last_schedule_err;
+}
+
+uint32_t
+clock_arch_get_schedule_failures(void)
+{
+  return schedule_failure_count;
+}
+
+uint8_t
+clock_arch_get_tick_channel(void)
+{
+  return tick_channel_id;
+}
+
+uint32_t
+clock_arch_get_tick_interval_us(void)
+{
+  return tick_interval_us;
+}
+
+uint64_t
+clock_arch_get_syscounter(void)
+{
+  uint64_t now = 0;
+  nrfx_grtc_syscounter_get(&now);
+  return now;
+}
+
+bool
+clock_arch_is_initialized(void)
+{
+  return is_initialized;
+}
+
+nrfx_err_t
+clock_arch_get_init_error(void)
+{
+  return init_error_code;
+}
 static void
 wait_for_lfclk_ready(void)
 {

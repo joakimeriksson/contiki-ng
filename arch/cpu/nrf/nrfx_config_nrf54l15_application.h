@@ -419,14 +419,18 @@
  * Integer value.
  */
 #ifndef NRFX_GRTC_CONFIG_NUM_OF_CC_CHANNELS
-#define NRFX_GRTC_CONFIG_NUM_OF_CC_CHANNELS 8
+#define NRFX_GRTC_CONFIG_NUM_OF_CC_CHANNELS 5
 #endif
 
 /**
  * @brief NRFX_GRTC_CONFIG_ALLOWED_CC_CHANNELS_MASK
+ *
+ * Channels 0, 1, 2, 5 and 6 are usable by the application core (matching
+ * Zephyr). Channels 3-4 are reserved for the FLPR core and 7-11 for
+ * zero-latency interrupts.
  */
 #ifndef NRFX_GRTC_CONFIG_ALLOWED_CC_CHANNELS_MASK
-#define NRFX_GRTC_CONFIG_ALLOWED_CC_CHANNELS_MASK 0x00000f0f
+#define NRFX_GRTC_CONFIG_ALLOWED_CC_CHANNELS_MASK 0x00000067
 #endif
 
 /**
