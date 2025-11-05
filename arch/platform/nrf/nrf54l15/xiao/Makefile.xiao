@@ -1,7 +1,7 @@
 ### Set CPU_FAMILY before it's used by Makefile.nrf
 CPU_FAMILY = nrf54l15
 
-BOARD_SOURCEFILES += board-sensors.c board-buttons.c
+BOARD_SOURCEFILES += board-sensors.c board-buttons.c board-leds.c
 
 CFLAGS += -DBOARD_CONF_PATH=\"xiao-nrf54l15-conf.h\"
 CFLAGS += -DBOARD_DEF_PATH=\"xiao-nrf54l15-def.h\"
