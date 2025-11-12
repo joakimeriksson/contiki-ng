@@ -11,29 +11,12 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "net/ipv6/uip.h"
+#include "net/linkaddr.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/*---------------------------------------------------------------------------*/
-/* Type definitions */
-/*---------------------------------------------------------------------------*/
-
-/**
- * \brief IPv6 address structure (compatible with uip_ip6addr_t)
- */
-typedef union {
-    uint8_t  u8[16];
-    uint16_t u16[8];
-} uip_ip6addr_t;
-
-/**
- * \brief Link-layer address structure
- */
-typedef struct {
-    uint8_t u8[8];
-} linkaddr_t;
 
 /*---------------------------------------------------------------------------*/
 /* Core functions */
