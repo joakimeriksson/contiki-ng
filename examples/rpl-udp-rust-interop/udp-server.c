@@ -10,13 +10,15 @@
 #include "net/netstack.h"
 #include "net/ipv6/simple-udp.h"
 
-/* Include Rust stack */
-#include "uip6-rust-conf.h"
-#include "uip6-rust-glue.h"
-
 #include "sys/log.h"
 #define LOG_MODULE "Rust-Server"
 #define LOG_LEVEL LOG_LEVEL_INFO
+
+/* Include Rust stack if enabled */
+#if UIP6_RUST_CONF_ENABLE
+#include "uip6-rust-conf.h"
+#include "uip6-rust-glue.h"
+#endif
 
 #define WITH_SERVER_REPLY  1
 #define UDP_CLIENT_PORT	8765
