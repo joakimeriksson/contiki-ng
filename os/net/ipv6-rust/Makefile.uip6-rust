@@ -1,0 +1,28 @@
+# Makefile fragment for integrating uIP6-Rust with Contiki-NG
+
+# Path to uIP6-Rust directory
+UIP6_RUST_DIR = $(CONTIKI)/os/net/ipv6-rust
+
+# Build the Rust library if not already built
+$(UIP6_RUST_DIR)/target/release/libuip6_rust.a:
+	@echo "Building uIP6-Rust library..."
+	cd $(UIP6_RUST_DIR) && cargo build --release
+
+# Add dependency for applications
+.PHONY: uip6-rust-build
+uip6-rust-build: $(UIP6_RUST_DIR)/target/release/libuip6_rust.a
+
+# Include path for C header
+CFLAGS += -I$(UIP6_RUST_DIR)
+
+# Link with the Rust library
+LDFLAGS += -L$(UIP6_RUST_DIR)/target/release
+LDFLAGS += -luip6_rust
+
+# Add dependency to build process
+CONTIKI_SOURCEFILES += uip6-rust-glue.c
+
+# Clean target
+.PHONY: uip6-rust-clean
+uip6-rust-clean:
+	cd $(UIP6_RUST_DIR) && cargo clean

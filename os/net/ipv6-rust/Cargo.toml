@@ -1,0 +1,21 @@
+[package]
+name = "uip6_rust"
+version = "0.1.0"
+edition = "2021"
+authors = ["Contiki-NG Contributors"]
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# Core dependencies for no_std embedded development
+
+[profile.release]
+opt-level = "z"         # Optimize for size
+lto = true              # Enable link-time optimization
+codegen-units = 1       # Better optimization
+panic = "abort"         # Reduce code size
+strip = true            # Strip symbols
+
+[profile.dev]
+opt-level = 2           # Some optimization for dev builds
