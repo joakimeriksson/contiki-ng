@@ -1,28 +1,58 @@
 # Makefile fragment for integrating uIP6-Rust with Contiki-NG
+#
+# Usage in your application Makefile:
+#   include $(CONTIKI)/os/net/ipv6-rust/Makefile.uip6-rust
 
 # Path to uIP6-Rust directory
 UIP6_RUST_DIR = $(CONTIKI)/os/net/ipv6-rust
 
-# Build the Rust library if not already built
-$(UIP6_RUST_DIR)/target/release/libuip6_rust.a:
-	@echo "Building uIP6-Rust library..."
-	cd $(UIP6_RUST_DIR) && cargo build --release
+# Check if Rust stack is enabled
+UIP6_RUST_ENABLED = 0
+ifdef UIP6_RUST_CONF_ENABLE
+  ifeq ($(UIP6_RUST_CONF_ENABLE),1)
+    UIP6_RUST_ENABLED = 1
+  endif
+endif
 
-# Add dependency for applications
-.PHONY: uip6-rust-build
-uip6-rust-build: $(UIP6_RUST_DIR)/target/release/libuip6_rust.a
+# Only include Rust stack if explicitly enabled
+ifeq ($(UIP6_RUST_ENABLED),1)
 
-# Include path for C header
-CFLAGS += -I$(UIP6_RUST_DIR)
+  $(info Building with Rust IPv6 stack)
 
-# Link with the Rust library
-LDFLAGS += -L$(UIP6_RUST_DIR)/target/release
-LDFLAGS += -luip6_rust
+  # Build the Rust library if not already built
+  RUST_LIB = $(UIP6_RUST_DIR)/target/release/libuip6_rust.a
 
-# Add dependency to build process
-CONTIKI_SOURCEFILES += uip6-rust-glue.c
+  .PHONY: uip6-rust-build
+  uip6-rust-build:
+	@echo "Building Rust IPv6 library..."
+	@cd $(UIP6_RUST_DIR) && cargo build --release
 
-# Clean target
-.PHONY: uip6-rust-clean
-uip6-rust-clean:
-	cd $(UIP6_RUST_DIR) && cargo clean
+  # Include path for C header
+  CFLAGS += -I$(UIP6_RUST_DIR)
+
+  # Add configuration
+  CFLAGS += -DUIP6_RUST_CONF_ENABLE=1
+
+  # Link with the Rust library
+  TARGET_LIBFILES += $(RUST_LIB)
+
+  # Add glue layer source file
+  CONTIKI_SOURCEFILES += uip6-rust-glue.c
+
+  # Set source directory for glue code
+  SOURCEDIRS += $(UIP6_RUST_DIR)
+
+  # Add dependency to build Rust library first
+  build/$(TARGET)/$(CONTIKI_PROJECT).$(TARGET): uip6-rust-build
+
+  # Clean target
+  .PHONY: uip6-rust-clean
+  uip6-rust-clean:
+	@echo "Cleaning Rust IPv6 library..."
+	@cd $(UIP6_RUST_DIR) && cargo clean
+
+  clean: uip6-rust-clean
+
+else
+  $(info Building with C IPv6 stack (Rust disabled))
+endif
