@@ -1,0 +1,40 @@
+diff --git a/os/net/ipv6/tcpip.c b/os/net/ipv6/tcpip.c
+index abc123..def456 100644
+--- a/os/net/ipv6/tcpip.c
++++ b/os/net/ipv6/tcpip.c
+@@ -48,6 +48,12 @@
+ #include "net/routing/routing.h"
+
++/* Include Rust IPv6 stack integration if enabled */
++#if UIP6_RUST_ENABLE
++#include "uip6-rust-conf.h"
++#include "uip6-rust-glue.h"
++#endif
++
+ /* Log configuration */
+ #include "sys/log.h"
+ #define LOG_MODULE "TCP/IP"
+@@ -182,7 +188,21 @@ packet_input(void)
+     }
+ #endif /* UIP_TAG_TC_WITH_VARIABLE_RETRANSMISSIONS */
+
++#if UIP6_RUST_ENABLE
++    /* Process packet with Rust IPv6 stack */
++    int rust_result = uip6_rust_glue_input(uip_buf, uip_len);
++
++#if UIP6_RUST_HYBRID_MODE
++    /* In hybrid mode, fall back to C if Rust fails */
++    if(rust_result < 0) {
++      LOG_DBG("Rust stack failed, using C fallback\n");
++      uip_input();
++    }
++#endif /* UIP6_RUST_HYBRID_MODE */
++
++#else /* !UIP6_RUST_ENABLE */
++    /* Use standard C IPv6 stack */
+     uip_input();
++#endif /* UIP6_RUST_ENABLE */
++
+     if(uip_len > 0) {
+       tcpip_ipv6_output();
+     }
