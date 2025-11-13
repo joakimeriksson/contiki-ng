@@ -42,6 +42,11 @@ ifeq ($(UIP6_RUST_ENABLED),1)
   # Set source directory for glue code
   SOURCEDIRS += $(UIP6_RUST_DIR)
 
+  # Exclude C IPv6 implementation files (Rust replaces these)
+  # Note: We keep tcpip.c, uip.c for TCP/UDP and event handling
+  MODULES_SOURCES_EXCLUDES += uip-nd6.c uip-ds6.c uip-ds6-nbr.c
+  MODULES_SOURCES_EXCLUDES += uip-ds6-route.c uip-icmp6.c
+
   # Add dependency to build Rust library first
   build/$(TARGET)/$(CONTIKI_PROJECT).$(TARGET): uip6-rust-build
 
