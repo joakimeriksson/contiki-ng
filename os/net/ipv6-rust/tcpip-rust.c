@@ -33,6 +33,12 @@ extern int tcpip_rust_ipv6_output(void);
 extern int tcpip_rust_output(const uint8_t *lladdr);
 extern void tcpip_rust_eventhandler(uint8_t ev, void *data);
 
+/* Rust UDP function declarations */
+extern struct uip_udp_conn *uip_udp_new_rust(const uip_ipaddr_t *ripaddr, uint16_t rport);
+extern void uip_udp_bind_rust(struct uip_udp_conn *conn, uint16_t lport);
+extern struct uip_udp_conn *uip_udp_conn_rust(void);
+extern struct uip_udp_conn *uip_udp_conns_rust(void);
+
 /* Process events */
 process_event_t tcpip_event;
 #if UIP_CONF_ICMP6
@@ -119,6 +125,53 @@ int tcpip_rust_is_my_addr(const uip_ipaddr_t *addr)
 {
   return uip_ds6_is_my_addr((uip_ipaddr_t *)addr) ? 1 : 0;
 }
+
+/*---------------------------------------------------------------------------*/
+/* UDP functions (wrappers for Rust implementation) */
+/*---------------------------------------------------------------------------*/
+
+/* Override UDP functions to use Rust implementation */
+#undef udp_new
+#undef uip_udp_bind
+
+struct uip_udp_conn *
+udp_new(const uip_ipaddr_t *ripaddr, uint16_t rport, void *appstate)
+{
+  struct uip_udp_conn *c;
+
+  /* Create new UDP connection via Rust */
+  c = uip_udp_new_rust(ripaddr, rport);
+
+  if(c == NULL) {
+    return NULL;
+  }
+
+  /* Set TTL from ds6 interface */
+  c->ttl = uip_ds6_if.cur_hop_limit;
+
+  /* Store application state pointers for compatibility */
+  c->appstate.p = PROCESS_CURRENT();
+  c->appstate.state = appstate;
+
+  return c;
+}
+
+struct uip_udp_conn *
+uip_udp_new(const uip_ipaddr_t *ripaddr, uint16_t rport)
+{
+  struct uip_udp_conn *c = uip_udp_new_rust(ripaddr, rport);
+  if(c != NULL) {
+    c->ttl = uip_ds6_if.cur_hop_limit;
+  }
+  return c;
+}
+
+/* Define UDP globals - but only if not already defined by uip6.o */
+/* Since uip6.c also defines these, we use weak symbols */
+__attribute__((weak)) struct uip_udp_conn *uip_udp_conn = NULL;
+
+/* Provide Rust implementation of uip_udp_new that overrides the weak one */
+/* We'll handle the symbol conflict at link time by using --allow-multiple-definition */
 
 /*---------------------------------------------------------------------------*/
 /* TCP/IP output function (called by applications) */

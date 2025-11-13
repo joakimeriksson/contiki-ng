@@ -22,6 +22,7 @@ pub mod ds6;
 pub mod checksum;
 pub mod ffi;
 pub mod tcpip;
+pub mod udp;
 
 // Re-export common types
 pub use types::*;

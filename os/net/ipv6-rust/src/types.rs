@@ -244,6 +244,12 @@ pub enum Error {
     FragmentationError,
     RouteNotFound,
     NeighborNotFound,
+    PacketTooShort,
+    InvalidLength,
+    InvalidPort,
+    ChecksumMismatch,
+    NoConnection,
+    InvalidConnection,
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
