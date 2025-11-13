@@ -86,7 +86,7 @@ int tcpip_rust_get_nexthop(const uip_ipaddr_t *dest, uip_ipaddr_t *out)
   const uip_ipaddr_t *nexthop;
 
   /* Check if destination is on-link */
-  if(uip_ds6_is_addr_onlink(dest)) {
+  if(uip_ds6_is_addr_onlink((uip_ipaddr_t *)dest)) {
     uip_ipaddr_copy(out, dest);
     return 0;
   }
@@ -112,12 +112,12 @@ int tcpip_rust_get_nexthop(const uip_ipaddr_t *dest, uip_ipaddr_t *out)
 
 int tcpip_rust_is_addr_onlink(const uip_ipaddr_t *addr)
 {
-  return uip_ds6_is_addr_onlink(addr) ? 1 : 0;
+  return uip_ds6_is_addr_onlink((uip_ipaddr_t *)addr) ? 1 : 0;
 }
 
 int tcpip_rust_is_my_addr(const uip_ipaddr_t *addr)
 {
-  return uip_ds6_is_my_addr(addr) ? 1 : 0;
+  return uip_ds6_is_my_addr((uip_ipaddr_t *)addr) ? 1 : 0;
 }
 
 /*---------------------------------------------------------------------------*/

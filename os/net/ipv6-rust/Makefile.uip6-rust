@@ -22,8 +22,8 @@ ifeq ($(UIP6_RUST_ENABLED),1)
   # Build the Rust library if not already built
   RUST_LIB = $(UIP6_RUST_DIR)/target/release/libuip6_rust.a
 
-  .PHONY: uip6-rust-build
-  uip6-rust-build:
+  # Rule to build Rust library
+  $(RUST_LIB):
 	@echo "Building Rust IPv6 library..."
 	@cd $(UIP6_RUST_DIR) && cargo build --release
 
@@ -43,12 +43,10 @@ ifeq ($(UIP6_RUST_ENABLED),1)
   SOURCEDIRS += $(UIP6_RUST_DIR)
 
   # Exclude C IPv6 implementation files (Rust replaces these)
-  # Note: We keep uip.c for buffer management (for now)
-  MODULES_SOURCES_EXCLUDES += uip-nd6.c uip-ds6.c uip-ds6-nbr.c
-  MODULES_SOURCES_EXCLUDES += uip-ds6-route.c uip-icmp6.c tcpip.c
-
-  # Add dependency to build Rust library first
-  build/$(TARGET)/$(CONTIKI_PROJECT).$(TARGET): uip6-rust-build
+  # Note: For now, we keep some C files for compatibility with uip6.c
+  # Only exclude what Rust fully replaces:
+  MODULES_SOURCES_EXCLUDES += tcpip.c
+  # TODO: Once UDP/TCP ported, can exclude: uip-nd6.c uip-ds6.c uip-ds6-nbr.c uip-ds6-route.c uip-icmp6.c
 
   # Clean target
   .PHONY: uip6-rust-clean
