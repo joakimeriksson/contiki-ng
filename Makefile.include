@@ -336,9 +336,19 @@ ifeq ($(MAKE_NET),MAKE_NET_NULLNET)
   CONTIKI_SOURCES_EXCLUDES_NATIVE += tun6-net.c
 endif
 
+# If Rust IPv6 stack is requested, automatically enable IPv6
+ifdef UIP6_RUST_CONF_ENABLE
+  MAKE_NET = MAKE_NET_IPV6
+endif
+
 ifeq ($(MAKE_NET),MAKE_NET_IPV6)
   CFLAGS += -DNETSTACK_CONF_WITH_IPV6=1
   MODULES += $(CONTIKI_NG_NET_DIR)/ipv6
+
+  # Include Rust IPv6 stack if enabled
+  ifdef UIP6_RUST_CONF_ENABLE
+    include $(CONTIKI)/$(CONTIKI_NG_NET_DIR)/ipv6-rust/Makefile.uip6-rust
+  endif
 endif
 
 ifeq ($(MAKE_NET),MAKE_NET_OTHER)

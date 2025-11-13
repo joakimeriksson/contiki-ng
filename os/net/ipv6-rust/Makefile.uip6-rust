@@ -32,6 +32,7 @@ ifeq ($(UIP6_RUST_ENABLED),1)
 
   # Add configuration
   CFLAGS += -DUIP6_RUST_CONF_ENABLE=1
+  CFLAGS += -DUIP_CONF_IPV6=1
 
   # Link with the Rust library
   TARGET_LIBFILES += $(RUST_LIB)
