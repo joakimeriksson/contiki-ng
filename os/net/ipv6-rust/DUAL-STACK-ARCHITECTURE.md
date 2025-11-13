@@ -25,22 +25,26 @@ The build system uses conditional compilation to select which stack to link:
 
 ### Completed Rust Modules
 
-The following core IPv6 functionality has been ported to Rust:
+The following core IPv6 and TCP/IP functionality has been ported to Rust:
 
 - **IPv6 Core** (`ipv6.rs`): Packet processing, header parsing, forwarding
 - **ICMPv6** (`icmpv6.rs`): Echo request/reply, error messages
 - **Neighbor Discovery** (`nd6.rs`): NS/NA/RS/RA message handling
 - **Data Structures** (`ds6.rs`): Address, prefix, multicast management
+- **TCP/IP Core** (`tcpip.rs`): Packet input/output, routing, event dispatch
 - **Checksums** (`checksum.rs`): RFC-compliant pseudo-header checksums
 - **Types** (`types.rs`): IPv6 address types, header structures
 - **FFI Layer** (`ffi.rs`): C interoperability for existing APIs
+
+**C Wrappers for PROCESS System:**
+- **tcpip-rust.c**: Minimal C wrapper providing PROCESS macros and helper functions
 
 ### C Modules Still Used (When Rust Enabled)
 
 These modules are still used from the C stack even when Rust is enabled:
 
-- **tcpip.c**: TCP/IP process and event handling
-- **uip.c**: Buffer management, TCP implementation
+- **uip.c**: Buffer management (`uip_buf`, `uip_len`), TCP implementation
+- **uipbuf.c**: Buffer attribute management
 - **simple-udp.c**: Application-level UDP helper APIs
 - **uip-packetqueue.c**: Packet queueing
 - **Routing protocols**: RPL-Lite/RPL-Classic (in `os/net/routing/`)
@@ -50,17 +54,18 @@ These modules are still used from the C stack even when Rust is enabled:
 To achieve a complete Rust-only stack, the following should be ported:
 
 **High Priority:**
-- **tcpip.c**: TCP/IP process and main event loop
 - **uip.c**: Core uIP buffer management and TCP state machine
-- **uiplib.c**: Utility functions (address parsing, formatting)
+- **uipbuf.c**: Buffer attribute management
+- **simple-udp.c**: UDP helper APIs
 
 **Medium Priority:**
 - **uip-sr.c**: Segment routing
-- **uip-icmp6.c**: Extended ICMPv6 handling
 - **uip-nameserver.c**: DNS resolver
+- **sicslowpan.c**: 6LoWPAN compression/fragmentation
 
 **Lower Priority:**
 - Routing protocols (RPL-Lite, RPL-Classic) could remain in C with FFI
+- **uiplib.c**: Utility functions (already reimplemented in Rust types.rs)
 
 ## Build System Integration
 
@@ -89,13 +94,12 @@ ifeq ($(UIP6_RUST_ENABLED),1)
   RUST_LIB = $(UIP6_RUST_DIR)/target/release/libuip6_rust.a
   TARGET_LIBFILES += $(RUST_LIB)
 
-  # Include glue layer for C/Rust interop
-  CONTIKI_SOURCEFILES += uip6-rust-glue.c
+  # Include glue layer and Rust TCP/IP wrapper
+  CONTIKI_SOURCEFILES += uip6-rust-glue.c tcpip-rust.c
 
-  # Exclude C IPv6 implementation files
-  CONTIKI_SOURCEFILES := $(filter-out uip-nd6.c uip-ds6.c uip-ds6-nbr.c \
-                                       uip-ds6-route.c uip-icmp6.c, \
-                                       $(CONTIKI_SOURCEFILES))
+  # Exclude C IPv6 implementation files (Rust replaces these)
+  MODULES_SOURCES_EXCLUDES += uip-nd6.c uip-ds6.c uip-ds6-nbr.c
+  MODULES_SOURCES_EXCLUDES += uip-ds6-route.c uip-icmp6.c tcpip.c
 else
   # Use default C stack (no changes needed)
   $(info Using C IPv6 stack)
@@ -216,15 +220,17 @@ To complete the Rust port:
 - Neighbor Discovery
 - Address/prefix management
 
-### Phase 2: TCP/IP Integration (Current)
+### Phase 2: TCP/IP Integration (✅ Complete)
 - Port tcpip.c process management
 - Integrate with Contiki-NG event system
-- Replace uip_input() calls
+- Implement packet input/output with routing
+- Create C wrapper for PROCESS system
 
-### Phase 3: Transport Layer
+### Phase 3: Transport Layer (Current)
 - Port UDP from uip.c
 - Port TCP state machine
 - Port connection management
+- Port uipbuf.c buffer management
 
 ### Phase 4: Advanced Features
 - Port routing protocols (RPL)

@@ -338,3 +338,17 @@ fn parse_target_lladdr(options: &[u8]) -> Option<LinkAddr> {
 
     None
 }
+
+/// Lookup neighbor and return link-layer address
+/// Returns 0 on success, -1 if not found
+/// Used by tcpip module for packet output
+pub fn lookup_neighbor(addr: &Ipv6Addr, lladdr_out: &mut [u8; 8]) -> i32 {
+    match nbr_lookup(addr) {
+        Some(nbr) => {
+            let len = core::cmp::min(nbr.lladdr.len as usize, 8);
+            lladdr_out[..len].copy_from_slice(&nbr.lladdr.addr[..len]);
+            0
+        }
+        None => -1,
+    }
+}

@@ -26,15 +26,18 @@ This document tracks which C modules from `os/net/ipv6/` have been ported to Rus
 - `uip-ds6-nbr.c` - Replaced by Rust neighbor cache
 - `uip-ds6-route.c` - Replaced by Rust route management
 - `uip-icmp6.c` - Replaced by Rust `icmpv6.rs`
+- `tcpip.c` - Replaced by Rust `tcpip.rs` + C wrapper `tcpip-rust.c`
 
 ## TCP/IP Layer
 
 | C File | Status | Rust Module | Notes |
 |--------|--------|-------------|-------|
-| `tcpip.c` | ⏳ Planned | N/A | TCP/IP process, event handling - needs porting |
-| `uipbuf.c` | ⏳ Planned | `buffer.rs` | Packet buffer management - partially in Rust |
+| `tcpip.c` | ✅ Ported | `tcpip.rs` + `tcpip-rust.c` | TCP/IP process, event handling, packet I/O |
+| `uipbuf.c` | 🔄 Partial | `buffer.rs` | Packet buffer management - uses C for now |
 
-Currently `tcpip.c` is still used even when Rust is enabled. It manages the TCP/IP process and event loop.
+The Rust TCP/IP implementation uses a hybrid approach:
+- **`tcpip.rs`** - Core logic (packet input/output, routing, event dispatch)
+- **`tcpip-rust.c`** - Minimal C wrapper for PROCESS system integration
 
 ## Transport Layer
 
@@ -73,12 +76,13 @@ These modules exist only in the Rust implementation:
 | `buffer.rs` | 180 | Packet buffer abstraction |
 | `ipv6.rs` | 280 | IPv6 packet processing |
 | `icmpv6.rs` | 220 | ICMPv6 implementation |
-| `nd6.rs` | 330 | Neighbor Discovery Protocol |
+| `nd6.rs` | 355 | Neighbor Discovery Protocol |
 | `ds6.rs` | 220 | IPv6 data structures |
 | `checksum.rs` | 100 | IPv6 pseudo-header checksums |
 | `ffi.rs` | 150 | C FFI bindings |
+| `tcpip.rs` | 220 | TCP/IP core (input/output/routing) |
 
-**Total Rust Code**: ~1,910 lines (excluding tests and comments)
+**Total Rust Code**: ~2,155 lines (excluding tests and comments)
 
 ## C Glue Layer
 
@@ -87,6 +91,7 @@ These modules exist only in the Rust implementation:
 | `uip6-rust-glue.c` | 300 | Glue between C and Rust, provides C-compatible APIs |
 | `uip6-rust-glue.h` | 80 | Header with function declarations |
 | `uip6-rust-conf.h` | 50 | Configuration validation |
+| `tcpip-rust.c` | 280 | Rust TCP/IP C wrapper for PROCESS system |
 
 ## Port Priorities
 
@@ -99,11 +104,12 @@ These modules exist only in the Rust implementation:
 - [x] Neighbor cache
 - [x] Checksum computation
 
-### Phase 2: TCP/IP Integration (🔄 In Progress)
-- [ ] Port `tcpip.c` process management
-- [ ] Port `uipbuf.c` buffer management
-- [ ] Integrate with Contiki-NG event system
-- [ ] Replace all `uip_input()` calls
+### Phase 2: TCP/IP Integration (✅ Complete)
+- [x] Port `tcpip.c` process management
+- [x] Integrate with Contiki-NG event system
+- [x] Implement packet input/output routing
+- [x] Create C wrapper for PROCESS system
+- [ ] Port `uipbuf.c` buffer management (deferred to Phase 3)
 
 ### Phase 3: Transport Layer (⏳ Planned)
 - [ ] Port UDP from `uip6.c`

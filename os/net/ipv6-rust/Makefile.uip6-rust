@@ -36,16 +36,16 @@ ifeq ($(UIP6_RUST_ENABLED),1)
   # Link with the Rust library
   TARGET_LIBFILES += $(RUST_LIB)
 
-  # Add glue layer source file
-  CONTIKI_SOURCEFILES += uip6-rust-glue.c
+  # Add glue layer and Rust TCP/IP wrapper
+  CONTIKI_SOURCEFILES += uip6-rust-glue.c tcpip-rust.c
 
   # Set source directory for glue code
   SOURCEDIRS += $(UIP6_RUST_DIR)
 
   # Exclude C IPv6 implementation files (Rust replaces these)
-  # Note: We keep tcpip.c, uip.c for TCP/UDP and event handling
+  # Note: We keep uip.c for buffer management (for now)
   MODULES_SOURCES_EXCLUDES += uip-nd6.c uip-ds6.c uip-ds6-nbr.c
-  MODULES_SOURCES_EXCLUDES += uip-ds6-route.c uip-icmp6.c
+  MODULES_SOURCES_EXCLUDES += uip-ds6-route.c uip-icmp6.c tcpip.c
 
   # Add dependency to build Rust library first
   build/$(TARGET)/$(CONTIKI_PROJECT).$(TARGET): uip6-rust-build
