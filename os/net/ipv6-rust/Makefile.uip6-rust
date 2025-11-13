@@ -43,10 +43,10 @@ ifeq ($(UIP6_RUST_ENABLED),1)
   SOURCEDIRS += $(UIP6_RUST_DIR)
 
   # Exclude C IPv6 implementation files (Rust replaces these)
-  # Note: For now, we keep some C files for compatibility with uip6.c
-  # Only exclude what Rust fully replaces:
-  MODULES_SOURCES_EXCLUDES += tcpip.c
-  # TODO: Once UDP/TCP ported, can exclude: uip-nd6.c uip-ds6.c uip-ds6-nbr.c uip-ds6-route.c uip-icmp6.c
+  # We now have buffer management and UDP in Rust, so we can exclude uip6.c
+  MODULES_SOURCES_EXCLUDES += tcpip.c uip6.c
+  # Note: We still keep some IPv6 helpers like uip-nd6.c, uip-ds6.c for now
+  # as they provide functions that uip6.c would call
 
   # Clean target
   .PHONY: uip6-rust-clean

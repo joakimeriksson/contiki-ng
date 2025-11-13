@@ -39,6 +39,11 @@ extern void uip_udp_bind_rust(struct uip_udp_conn *conn, uint16_t lport);
 extern struct uip_udp_conn *uip_udp_conn_rust(void);
 extern struct uip_udp_conn *uip_udp_conns_rust(void);
 
+/* Rust buffer management declarations */
+extern uint8_t *uip_buf_ptr(void);
+extern uint16_t *uip_len_ptr(void);
+extern void *uip_aligned_buf_ptr(void);
+
 /* Process events */
 process_event_t tcpip_event;
 #if UIP_CONF_ICMP6
@@ -166,12 +171,7 @@ uip_udp_new(const uip_ipaddr_t *ripaddr, uint16_t rport)
   return c;
 }
 
-/* Define UDP globals - but only if not already defined by uip6.o */
-/* Since uip6.c also defines these, we use weak symbols */
-__attribute__((weak)) struct uip_udp_conn *uip_udp_conn = NULL;
-
-/* Provide Rust implementation of uip_udp_new that overrides the weak one */
-/* We'll handle the symbol conflict at link time by using --allow-multiple-definition */
+/* Note: uip_udp_conn is now defined in the buffer management section above */
 
 /*---------------------------------------------------------------------------*/
 /* TCP/IP output function (called by applications) */
@@ -244,6 +244,99 @@ tcpip_poll_tcp(struct uip_conn *conn)
 #endif
 
 /*---------------------------------------------------------------------------*/
+/* Buffer management - redirect to Rust */
+/*---------------------------------------------------------------------------*/
+
+/* Provide actual global variables that point to Rust buffers */
+/* These must be actual symbols that can be linked by other C files */
+/* Note: uip_aligned_buf must match the structure that Rust provides */
+uip_buf_t uip_aligned_buf;   /* Actual buffer structure */
+/* Note: uip_buf is defined as a macro in uip.h: #define uip_buf (uip_aligned_buf.u8) */
+
+uint16_t uip_len = 0;        /* Packet length */
+
+/* Additional buffer variables from uip6.c that we need to provide */
+uint16_t uip_ext_len = 0;    /* Extension header length */
+uint16_t uip_slen = 0;       /* Send length */
+uint8_t uip_last_proto = 0;  /* Last protocol number */
+
+/* Additional uIP global variables needed by C code */
+void *uip_appdata = NULL;    /* Application data pointer */
+
+/* TCP/UDP connection pointers (stubs for now) */
+struct uip_conn *uip_conn = NULL;         /* Current TCP connection */
+struct uip_udp_conn *uip_udp_conn = NULL; /* Current UDP connection */
+uint8_t uip_flags = 0;                    /* Connection flags */
+
+/* Link-layer address */
+uip_lladdr_t uip_lladdr;
+
+/* Initialize buffer pointers to use Rust buffers */
+static void init_buffer_ptrs(void) {
+  uip_buf_t *rust_aligned_buf = (uip_buf_t *)uip_aligned_buf_ptr();
+  uint16_t *rust_len = uip_len_ptr();
+
+  /* Copy Rust buffer contents to our local buffer */
+  /* This ensures C code sees the same data as Rust */
+  memcpy(&uip_aligned_buf, rust_aligned_buf, sizeof(uip_buf_t));
+
+  /* Sync length - we'll need to keep these in sync during packet processing */
+  uip_len = *rust_len;
+}
+
+/*---------------------------------------------------------------------------*/
+/* uIP function stubs */
+/*---------------------------------------------------------------------------*/
+
+/* tcpip_uipcall - stub for application callbacks */
+void tcpip_uipcall(void)
+{
+  /* TODO: Implement proper application callbacks when TCP is ported */
+  LOG_DBG("tcpip_uipcall() called (stub)\n");
+}
+
+/* uip_process - stub for processing (replaced by Rust) */
+void uip_process(uint8_t flag)
+{
+  /* This is replaced by Rust packet processing */
+  LOG_DBG("uip_process() called (stub)\n");
+}
+
+/* uip_icmp6chksum - ICMPv6 checksum calculation */
+/* This should ideally call Rust checksum functions */
+uint16_t uip_icmp6chksum(void)
+{
+  /* TODO: Call Rust checksum function */
+  /* For now, return 0 (checksum disabled) */
+  LOG_WARN("uip_icmp6chksum() called (stub - returning 0)\n");
+  return 0;
+}
+
+/* uip_send - TCP send function (stub) */
+void uip_send(const void *data, int len)
+{
+  /* TODO: Implement TCP send when TCP is ported */
+  LOG_DBG("uip_send() called (stub)\n");
+}
+
+/* uip_remove_ext_hdr - Remove IPv6 extension header */
+bool uip_remove_ext_hdr(void)
+{
+  /* TODO: Implement extension header removal */
+  LOG_DBG("uip_remove_ext_hdr() called (stub)\n");
+  return false;
+}
+
+/* uip_htonl - Host to network byte order (32-bit) */
+uint32_t uip_htonl(uint32_t val)
+{
+  return ((val & 0xff000000) >> 24) |
+         ((val & 0x00ff0000) >> 8) |
+         ((val & 0x0000ff00) << 8) |
+         ((val & 0x000000ff) << 24);
+}
+
+/*---------------------------------------------------------------------------*/
 /* Main TCP/IP process */
 /*---------------------------------------------------------------------------*/
 PROCESS(tcpip_process, "TCP/IP stack (Rust)");
@@ -253,6 +346,9 @@ PROCESS_THREAD(tcpip_process, ev, data)
   PROCESS_BEGIN();
 
   LOG_INFO("Starting Rust TCP/IP stack\n");
+
+  /* Initialize buffer pointers */
+  init_buffer_ptrs();
 
   /* Initialize Rust stack */
   tcpip_rust_init();
