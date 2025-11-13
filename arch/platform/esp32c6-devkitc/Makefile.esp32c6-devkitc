@@ -1,0 +1,66 @@
+### ESP32-C6-DevKitC Platform Makefile
+
+ifndef CONTIKI
+  $(error CONTIKI not defined! You must specify where CONTIKI resides!)
+endif
+
+### Board and platform configuration
+BOARD ?= esp32c6-devkitc
+TARGET = esp32c6-devkitc
+
+### Unless the example dictates otherwise, build with code size optimizations switched off
+SMALL ?= 0
+
+### Platform root directory
+PLATFORM_ROOT_DIR = $(CONTIKI_NG_RELOC_PLATFORM_DIR)/$(TARGET)
+
+### Platform-specific directories
+CONTIKI_TARGET_DIRS = . dev
+
+### Platform-specific source files
+CONTIKI_TARGET_SOURCEFILES += platform.c
+CONTIKI_TARGET_SOURCEFILES += leds-arch.c
+
+### Add platform sources to overall build
+CONTIKI_SOURCEFILES += $(CONTIKI_TARGET_SOURCEFILES)
+
+### Define the CPU directory and pull in the CPU makefile
+CONTIKI_CPU = $(CONTIKI_NG_RELOC_CPU_DIR)/esp32c6
+include $(CONTIKI_CPU)/Makefile.esp32c6
+
+### Platform-specific configuration
+CFLAGS += -DPLATFORM_CONF_PATH=\"platform-conf.h\"
+
+### Default node ID (can be overridden)
+ifdef NODEID
+  CFLAGS += -DNODE_ID=$(NODEID)
+endif
+
+### Radio configuration
+CFLAGS += -DRADIO_CONF_CHANNEL=26
+
+### Logging configuration
+CFLAGS += -DLOG_CONF_LEVEL_MAIN=LOG_LEVEL_INFO
+
+### Help target
+.PHONY: esp32c6-devkitc-help
+
+esp32c6-devkitc-help:
+	@echo "ESP32-C6-DevKitC Platform"
+	@echo "========================="
+	@echo ""
+	@echo "This platform supports the ESP32-C6-DevKitC development board."
+	@echo ""
+	@echo "Features:"
+	@echo "  - ESP32-C6 RISC-V CPU @ 160 MHz"
+	@echo "  - 400 KB RAM, 8 MB Flash"
+	@echo "  - IEEE 802.15.4 radio"
+	@echo "  - WS2812 RGB LED on GPIO8"
+	@echo "  - USB-Serial for programming and debug"
+	@echo ""
+	@echo "Build example:"
+	@echo "  make TARGET=esp32c6-devkitc"
+	@echo ""
+	@echo "Toolchain required:"
+	@echo "  riscv32-esp-elf-gcc (from ESP-IDF)"
+	@echo ""

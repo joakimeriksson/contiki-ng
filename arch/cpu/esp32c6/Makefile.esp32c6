@@ -1,0 +1,74 @@
+### ESP32-C6 CPU Makefile
+
+### Build options
+SMALL ?= 0
+
+### CPU-specific directories
+CONTIKI_CPU_DIRS = . dev
+
+### CPU-specific source files
+CONTIKI_CPU_SOURCEFILES += clock-arch.c
+CONTIKI_CPU_SOURCEFILES += rtimer-arch.c
+CONTIKI_CPU_SOURCEFILES += uart-arch.c
+CONTIKI_CPU_SOURCEFILES += gpio-hal-arch.c
+CONTIKI_CPU_SOURCEFILES += esp32c6-radio.c
+
+### Compiler definitions
+CFLAGS += -DCPU_CONF_PATH=\"esp32c6-conf.h\"
+CFLAGS += -DCPU_DEF_PATH=\"esp32c6-def.h\"
+
+### Architecture flags for RISC-V
+# ESP32-C6 uses RV32IMAC (32-bit RISC-V with integer, multiply, atomic, compressed)
+CFLAGS += -march=rv32imac
+CFLAGS += -mabi=ilp32
+
+### Optimization flags
+ifeq ($(SMALL),1)
+  CFLAGS += -Os
+else
+  CFLAGS += -O2
+endif
+
+### Warning flags
+CFLAGS += -Wall -Wextra
+CFLAGS += -Wno-unused-parameter
+CFLAGS += -Wno-unused-function
+
+### Target-specific flags
+CFLAGS += -ffunction-sections -fdata-sections
+LDFLAGS += -Wl,--gc-sections
+
+### Linker script (simplified - would need actual linker script for ESP32-C6)
+LDSCRIPT ?= $(CONTIKI_CPU)/esp32c6.ld
+
+### Include directories
+CONTIKI_CPU_DIRS += $(CONTIKI_CPU)/dev
+
+### Toolchain
+# ESP32-C6 uses RISC-V GCC toolchain
+# Expected to be riscv32-esp-elf-gcc or riscv32-unknown-elf-gcc
+PREFIX ?= riscv32-esp-elf
+
+ifdef PREFIX
+  CC       = $(PREFIX)-gcc
+  CXX      = $(PREFIX)-g++
+  LD       = $(PREFIX)-gcc
+  AR       = $(PREFIX)-ar
+  AS       = $(PREFIX)-as
+  NM       = $(PREFIX)-nm
+  OBJCOPY  = $(PREFIX)-objcopy
+  OBJDUMP  = $(PREFIX)-objdump
+  SIZE     = $(PREFIX)-size
+  STRIP    = $(PREFIX)-strip
+endif
+
+### CPU-specific targets
+.PHONY: esp32c6-info
+
+esp32c6-info:
+	@echo "ESP32-C6 CPU Configuration:"
+	@echo "  CPU: RISC-V RV32IMAC @ 160 MHz"
+	@echo "  RAM: 400 KB"
+	@echo "  Flash: 8 MB (external)"
+	@echo "  Radio: IEEE 802.15.4"
+	@echo "  Toolchain: $(PREFIX)"
