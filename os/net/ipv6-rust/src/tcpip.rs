@@ -276,14 +276,29 @@ pub extern "C" fn tcpip_rust_ipv6_output() -> i32 {
     // Get next hop
     log_info!("[OUTPUT] Looking up next hop for destination");
     let mut nexthop = Ipv6Addr::unspecified();
+
+    unsafe {
+        rust_debug_log(b"[OUTPUT] Calling tcpip_rust_get_nexthop()\n\0".as_ptr());
+    }
+
     let nexthop_result = unsafe { tcpip_rust_get_nexthop(dest_addr, &mut nexthop) };
 
+    unsafe {
+        rust_debug_log_int(b"[OUTPUT] tcpip_rust_get_nexthop() returned:\0".as_ptr(), nexthop_result);
+    }
+
     if nexthop_result < 0 {
+        unsafe {
+            rust_debug_log(b"[OUTPUT] ERROR: No route to destination\n\0".as_ptr());
+        }
         log_warn!("[OUTPUT] No route to destination");
         uipbuf::clear();
         return -1;
     }
 
+    unsafe {
+        rust_debug_log(b"[OUTPUT] Next hop found, looking up neighbor\n\0".as_ptr());
+    }
     log_info!("[OUTPUT] Next hop found, looking up neighbor");
 
     // Look up neighbor for link-layer address
