@@ -159,28 +159,54 @@ pub fn process_input(data: &mut [u8]) -> Result<()> {
         }
     };
 
+    unsafe {
+        rust_debug_log(b"[IPv6] Dispatching to upper layer protocol\n\0".as_ptr());
+    }
     log_info!("[IPv6] Dispatching to upper layer protocol");
 
     // Dispatch to upper layer protocol
     match IpProto::from_u8(next_header) {
         Some(IpProto::Icmpv6) => {
+            unsafe {
+                rust_debug_log(b"[IPv6] Protocol: ICMPv6, calling icmpv6::process_input()\n\0".as_ptr());
+            }
             log_info!("[IPv6] Protocol: ICMPv6");
-            icmpv6::process_input(&mut buffer, payload_offset, &src, &dst)
+            let result = icmpv6::process_input(&mut buffer, payload_offset, &src, &dst);
+            unsafe {
+                if result.is_ok() {
+                    rust_debug_log(b"[IPv6] ICMPv6 processing returned Ok\n\0".as_ptr());
+                } else {
+                    rust_debug_log(b"[IPv6] ICMPv6 processing returned Err!\n\0".as_ptr());
+                }
+            }
+            result
         }
         Some(IpProto::Udp) => {
+            unsafe {
+                rust_debug_log(b"[IPv6] Protocol: UDP\n\0".as_ptr());
+            }
             log_info!("[IPv6] Protocol: UDP");
             process_udp(&mut buffer, payload_offset, &src, &dst)
         }
         Some(IpProto::Tcp) => {
+            unsafe {
+                rust_debug_log(b"[IPv6] Protocol: TCP\n\0".as_ptr());
+            }
             log_info!("[IPv6] Protocol: TCP");
             process_tcp(&mut buffer, payload_offset, &src, &dst)
         }
         Some(IpProto::Ipv6NoNxt) => {
+            unsafe {
+                rust_debug_log(b"[IPv6] Protocol: No next header\n\0".as_ptr());
+            }
             log_info!("[IPv6] Protocol: No next header");
             // No next header - packet ends here
             Ok(())
         }
         _ => {
+            unsafe {
+                rust_debug_log_int(b"[IPv6] Unsupported protocol, next_header:\0".as_ptr(), next_header as i32);
+            }
             log_warn!("[IPv6] Unsupported protocol");
             // Unsupported protocol
             Err(Error::UnsupportedProtocol)

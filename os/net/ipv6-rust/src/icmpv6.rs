@@ -9,6 +9,8 @@ extern "C" {
     fn tcpip_rust_log_info(msg: *const u8);
     fn tcpip_rust_log_warn(msg: *const u8);
     fn tcpip_rust_log_err(msg: *const u8);
+    fn rust_debug_log(msg: *const u8);
+    fn rust_debug_log_int(msg: *const u8, val: i32);
 }
 
 macro_rules! log_info {
@@ -134,23 +136,57 @@ pub fn process_input(
     src: &Ipv6Addr,
     dst: &Ipv6Addr,
 ) -> Result<()> {
+    unsafe {
+        rust_debug_log(b"[ICMPv6] process_input() entered\n\0".as_ptr());
+        rust_debug_log_int(b"[ICMPv6] offset:\0".as_ptr(), offset as i32);
+    }
     log_info!("[ICMPv6] Processing ICMPv6 message");
 
-    let payload = buffer.payload(offset)?;
+    unsafe {
+        rust_debug_log(b"[ICMPv6] Calling buffer.payload()\n\0".as_ptr());
+    }
+    let payload = match buffer.payload(offset) {
+        Ok(p) => {
+            unsafe {
+                rust_debug_log_int(b"[ICMPv6] payload.len():\0".as_ptr(), p.len() as i32);
+            }
+            p
+        }
+        Err(e) => {
+            unsafe {
+                rust_debug_log(b"[ICMPv6] ERROR: buffer.payload() failed!\n\0".as_ptr());
+            }
+            return Err(e);
+        }
+    };
 
     if payload.len() < Icmpv6Header::SIZE {
+        unsafe {
+            rust_debug_log(b"[ICMPv6] ERROR: Packet too small for ICMPv6 header\n\0".as_ptr());
+        }
         log_warn!("[ICMPv6] Packet too small for ICMPv6 header");
         return Err(Error::InvalidPacket);
     }
 
+    unsafe {
+        rust_debug_log(b"[ICMPv6] Parsing ICMPv6 header\n\0".as_ptr());
+    }
     let header = unsafe {
         &*(payload.as_ptr() as *const Icmpv6Header)
     };
+
+    unsafe {
+        rust_debug_log_int(b"[ICMPv6] ICMPv6 type:\0".as_ptr(), header.type_ as i32);
+        rust_debug_log_int(b"[ICMPv6] ICMPv6 code:\0".as_ptr(), header.code as i32);
+    }
 
     log_info!("[ICMPv6] Verifying checksum");
 
     // Verify checksum
     let payload_len = payload.len() as u32;
+    unsafe {
+        rust_debug_log(b"[ICMPv6] Calling checksum::verify_checksum()\n\0".as_ptr());
+    }
     if !checksum::verify_checksum(
         src,
         dst,
@@ -159,10 +195,16 @@ pub fn process_input(
         payload,
         header.checksum(),
     ) {
+        unsafe {
+            rust_debug_log(b"[ICMPv6] ERROR: Checksum verification FAILED!\n\0".as_ptr());
+        }
         log_warn!("[ICMPv6] Checksum verification FAILED");
         return Err(Error::InvalidChecksum);
     }
 
+    unsafe {
+        rust_debug_log(b"[ICMPv6] Checksum OK\n\0".as_ptr());
+    }
     log_info!("[ICMPv6] Checksum OK, dispatching message type");
 
     // Dispatch based on type
