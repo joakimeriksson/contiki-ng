@@ -32,6 +32,25 @@ extern "C" {
     fn tcpip_rust_is_my_addr(addr: *const Ipv6Addr) -> i32;
 }
 
+// Logging macros
+macro_rules! log_info {
+    ($msg:expr) => {
+        unsafe { tcpip_rust_log_info(concat!($msg, "\0").as_ptr()) }
+    };
+}
+
+macro_rules! log_warn {
+    ($msg:expr) => {
+        unsafe { tcpip_rust_log_warn(concat!($msg, "\0").as_ptr()) }
+    };
+}
+
+macro_rules! log_err {
+    ($msg:expr) => {
+        unsafe { tcpip_rust_log_err(concat!($msg, "\0").as_ptr()) }
+    };
+}
+
 // Constants
 const NETSTACK_IP_INPUT: u8 = 0;
 const NETSTACK_IP_OUTPUT: u8 = 1;
@@ -64,12 +83,11 @@ pub extern "C" fn tcpip_rust_packet_input() -> i32 {
     let len = uipbuf::get_len();
 
     if len == 0 {
+        log_info!("[TCPIP] Packet input: empty buffer (len=0)");
         return 0;
     }
 
-    unsafe {
-        tcpip_rust_log_info(b"TCP/IP: Packet input\n\0".as_ptr());
-    }
+    log_info!("[TCPIP] Packet input: processing packet");
 
     // Get packet buffer
     let buf = &mut uipbuf::get_buffer()[..len as usize];
@@ -77,16 +95,18 @@ pub extern "C" fn tcpip_rust_packet_input() -> i32 {
     // Process with Rust IPv6 stack
     match ipv6::process_input(buf) {
         Ok(_) => {
+            log_info!("[TCPIP] Packet processed successfully");
             // If there's output to send, handle it
             if uipbuf::get_len() > 0 {
+                log_info!("[TCPIP] Output available, calling ipv6_output");
                 tcpip_rust_ipv6_output();
+            } else {
+                log_info!("[TCPIP] No output to send");
             }
             0
         }
         Err(_) => {
-            unsafe {
-                tcpip_rust_log_warn(b"TCP/IP: Packet processing failed\n\0".as_ptr());
-            }
+            log_warn!("[TCPIP] Packet processing FAILED");
             uipbuf::clear();
             -1
         }
@@ -112,23 +132,22 @@ pub extern "C" fn tcpip_rust_input() {
 pub extern "C" fn tcpip_rust_ipv6_output() -> i32 {
     let len = uipbuf::get_len();
 
+    log_info!("[OUTPUT] IPv6 output called");
+
     if len == 0 {
+        log_warn!("[OUTPUT] Empty buffer, nothing to send");
         return 0;
     }
 
     if len > UIP_LINK_MTU {
-        unsafe {
-            tcpip_rust_log_err(b"TCP/IP: Packet too big\n\0".as_ptr());
-        }
+        log_err!("[OUTPUT] Packet too big for link MTU");
         uipbuf::clear();
         return -1;
     }
 
     // Get destination address from packet
     if len < 40 {
-        unsafe {
-            tcpip_rust_log_err(b"TCP/IP: Packet too small\n\0".as_ptr());
-        }
+        log_err!("[OUTPUT] Packet too small (< 40 bytes)");
         uipbuf::clear();
         return -1;
     }
@@ -139,49 +158,46 @@ pub extern "C" fn tcpip_rust_ipv6_output() -> i32 {
 
     // Check if destination is unspecified
     if dest_addr.is_unspecified() {
-        unsafe {
-            tcpip_rust_log_err(b"TCP/IP: Destination unspecified\n\0".as_ptr());
-        }
+        log_err!("[OUTPUT] Destination address is unspecified");
         uipbuf::clear();
         return -1;
     }
 
+    log_info!("[OUTPUT] Destination address valid");
+
     // Handle multicast
     if dest_addr.is_multicast() {
-        unsafe {
-            tcpip_rust_log_info(b"TCP/IP: Multicast output\n\0".as_ptr());
-        }
+        log_info!("[OUTPUT] Multicast destination, sending directly");
         return tcpip_rust_output(ptr::null());
     }
 
     // Check if sending to ourselves (loopback)
     unsafe {
         if tcpip_rust_is_my_addr(dest_addr) != 0 {
-            tcpip_rust_log_info(b"TCP/IP: Loopback to self\n\0".as_ptr());
+            log_info!("[OUTPUT] Loopback: sending to self");
             return tcpip_rust_packet_input();
         }
     }
 
     // Get next hop
+    log_info!("[OUTPUT] Looking up next hop for destination");
     let mut nexthop = Ipv6Addr::unspecified();
     let nexthop_result = unsafe { tcpip_rust_get_nexthop(dest_addr, &mut nexthop) };
 
     if nexthop_result < 0 {
-        unsafe {
-            tcpip_rust_log_warn(b"TCP/IP: No next hop found\n\0".as_ptr());
-        }
+        log_warn!("[OUTPUT] No route to destination");
         uipbuf::clear();
         return -1;
     }
+
+    log_info!("[OUTPUT] Next hop found, looking up neighbor");
 
     // Look up neighbor for link-layer address
     let mut lladdr = [0u8; 8];
     let nbr_result = nd6::lookup_neighbor(&nexthop, &mut lladdr);
 
     if nbr_result < 0 {
-        unsafe {
-            tcpip_rust_log_info(b"TCP/IP: Neighbor not in cache, sending NS\n\0".as_ptr());
-        }
+        log_info!("[OUTPUT] Neighbor not in cache - need NS");
         // In real implementation, would trigger NS and queue packet
         // For now, just drop
         uipbuf::clear();
@@ -189,10 +205,14 @@ pub extern "C" fn tcpip_rust_ipv6_output() -> i32 {
     }
 
     // Send packet to link layer
-    unsafe {
-        tcpip_rust_log_info(b"TCP/IP: Sending to link layer\n\0".as_ptr());
-    }
+    log_info!("[OUTPUT] Neighbor found, sending to link layer");
     let result = tcpip_rust_output(lladdr.as_ptr());
+
+    if result >= 0 {
+        log_info!("[OUTPUT] Packet sent successfully");
+    } else {
+        log_warn!("[OUTPUT] Link layer send failed");
+    }
 
     uipbuf::clear();
     result

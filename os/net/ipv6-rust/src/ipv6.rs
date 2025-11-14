@@ -4,6 +4,31 @@ use crate::types::*;
 use crate::buffer::UipBuffer;
 use crate::{checksum, icmpv6, ds6};
 
+// Logging (C functions)
+extern "C" {
+    fn tcpip_rust_log_info(msg: *const u8);
+    fn tcpip_rust_log_warn(msg: *const u8);
+    fn tcpip_rust_log_err(msg: *const u8);
+}
+
+macro_rules! log_info {
+    ($msg:expr) => {
+        unsafe { tcpip_rust_log_info(concat!($msg, "\0").as_ptr()) }
+    };
+}
+
+macro_rules! log_warn {
+    ($msg:expr) => {
+        unsafe { tcpip_rust_log_warn(concat!($msg, "\0").as_ptr()) }
+    };
+}
+
+macro_rules! log_err {
+    ($msg:expr) => {
+        unsafe { tcpip_rust_log_err(concat!($msg, "\0").as_ptr()) }
+    };
+}
+
 /// Minimum IPv6 MTU
 pub const IPV6_MIN_MTU: usize = 1280;
 
@@ -12,10 +37,13 @@ pub const DEFAULT_HOP_LIMIT: u8 = 64;
 
 /// Process an incoming IPv6 packet
 pub fn process_input(data: &mut [u8]) -> Result<()> {
+    log_info!("[IPv6] Processing input packet");
+
     let mut buffer = UipBuffer::new(data);
 
     // Verify minimum packet size
     if buffer.len() < Ipv6Header::SIZE {
+        log_warn!("[IPv6] Packet too small for IPv6 header");
         return Err(Error::InvalidPacket);
     }
 
@@ -24,12 +52,14 @@ pub fn process_input(data: &mut [u8]) -> Result<()> {
 
     // Verify version
     if ip_header.version() != 6 {
+        log_warn!("[IPv6] Invalid IP version (not IPv6)");
         return Err(Error::InvalidPacket);
     }
 
     // Check payload length
     let payload_len = ip_header.payload_len() as usize;
     if Ipv6Header::SIZE + payload_len > buffer.len() {
+        log_warn!("[IPv6] Payload length mismatch");
         return Err(Error::InvalidPacket);
     }
 
@@ -37,14 +67,20 @@ pub fn process_input(data: &mut [u8]) -> Result<()> {
     let src = ip_header.srcipaddr;
     let dst = ip_header.destipaddr;
 
+    log_info!("[IPv6] Packet parsed, checking destination");
+
     // Check if packet is for us
     if !is_for_us(&dst) {
+        log_info!("[IPv6] Packet not for us, forwarding");
         // Forward packet if we're a router
         return forward_packet(&mut buffer);
     }
 
+    log_info!("[IPv6] Packet is for us");
+
     // Check hop limit
     if ip_header.hlim == 0 {
+        log_warn!("[IPv6] Hop limit exceeded");
         icmpv6::send_time_exceeded(&mut buffer, icmpv6::TimeExceededCode::HopLimitExceeded)?;
         return Err(Error::InvalidPacket);
     }
@@ -52,22 +88,29 @@ pub fn process_input(data: &mut [u8]) -> Result<()> {
     // Process extension headers and get final next header
     let (next_header, payload_offset) = process_extension_headers(&mut buffer)?;
 
+    log_info!("[IPv6] Dispatching to upper layer protocol");
+
     // Dispatch to upper layer protocol
     match IpProto::from_u8(next_header) {
         Some(IpProto::Icmpv6) => {
+            log_info!("[IPv6] Protocol: ICMPv6");
             icmpv6::process_input(&mut buffer, payload_offset, &src, &dst)
         }
         Some(IpProto::Udp) => {
+            log_info!("[IPv6] Protocol: UDP");
             process_udp(&mut buffer, payload_offset, &src, &dst)
         }
         Some(IpProto::Tcp) => {
+            log_info!("[IPv6] Protocol: TCP");
             process_tcp(&mut buffer, payload_offset, &src, &dst)
         }
         Some(IpProto::Ipv6NoNxt) => {
+            log_info!("[IPv6] Protocol: No next header");
             // No next header - packet ends here
             Ok(())
         }
         _ => {
+            log_warn!("[IPv6] Unsupported protocol");
             // Unsupported protocol
             Err(Error::UnsupportedProtocol)
         }

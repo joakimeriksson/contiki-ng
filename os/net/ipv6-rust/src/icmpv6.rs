@@ -4,6 +4,31 @@ use crate::types::*;
 use crate::checksum;
 use crate::buffer::UipBuffer;
 
+// Logging (C functions)
+extern "C" {
+    fn tcpip_rust_log_info(msg: *const u8);
+    fn tcpip_rust_log_warn(msg: *const u8);
+    fn tcpip_rust_log_err(msg: *const u8);
+}
+
+macro_rules! log_info {
+    ($msg:expr) => {
+        unsafe { tcpip_rust_log_info(concat!($msg, "\0").as_ptr()) }
+    };
+}
+
+macro_rules! log_warn {
+    ($msg:expr) => {
+        unsafe { tcpip_rust_log_warn(concat!($msg, "\0").as_ptr()) }
+    };
+}
+
+macro_rules! log_err {
+    ($msg:expr) => {
+        unsafe { tcpip_rust_log_err(concat!($msg, "\0").as_ptr()) }
+    };
+}
+
 /// ICMPv6 message types
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -109,15 +134,20 @@ pub fn process_input(
     src: &Ipv6Addr,
     dst: &Ipv6Addr,
 ) -> Result<()> {
+    log_info!("[ICMPv6] Processing ICMPv6 message");
+
     let payload = buffer.payload(offset)?;
 
     if payload.len() < Icmpv6Header::SIZE {
+        log_warn!("[ICMPv6] Packet too small for ICMPv6 header");
         return Err(Error::InvalidPacket);
     }
 
     let header = unsafe {
         &*(payload.as_ptr() as *const Icmpv6Header)
     };
+
+    log_info!("[ICMPv6] Verifying checksum");
 
     // Verify checksum
     let payload_len = payload.len() as u32;
@@ -129,25 +159,36 @@ pub fn process_input(
         payload,
         header.checksum(),
     ) {
+        log_warn!("[ICMPv6] Checksum verification FAILED");
         return Err(Error::InvalidChecksum);
     }
 
+    log_info!("[ICMPv6] Checksum OK, dispatching message type");
+
     // Dispatch based on type
     match Icmpv6Type::from_u8(header.type_) {
-        Some(Icmpv6Type::EchoRequest) => process_echo_request(buffer, offset, src, dst),
+        Some(Icmpv6Type::EchoRequest) => {
+            log_info!("[ICMPv6] Type: Echo Request (ping)");
+            process_echo_request(buffer, offset, src, dst)
+        }
         Some(Icmpv6Type::NeighborSol) => {
+            log_info!("[ICMPv6] Type: Neighbor Solicitation");
             crate::nd6::process_ns(buffer, offset, src, dst)
         }
         Some(Icmpv6Type::NeighborAdv) => {
+            log_info!("[ICMPv6] Type: Neighbor Advertisement");
             crate::nd6::process_na(buffer, offset, src, dst)
         }
         Some(Icmpv6Type::RouterAdv) => {
+            log_info!("[ICMPv6] Type: Router Advertisement");
             crate::nd6::process_ra(buffer, offset, src, dst)
         }
         Some(Icmpv6Type::RouterSol) => {
+            log_info!("[ICMPv6] Type: Router Solicitation");
             crate::nd6::process_rs(buffer, offset, src, dst)
         }
         _ => {
+            log_warn!("[ICMPv6] Unknown ICMPv6 message type");
             // Unknown or unimplemented ICMPv6 type
             Ok(())
         }
@@ -161,6 +202,8 @@ fn process_echo_request(
     _src: &Ipv6Addr,
     _dst: &Ipv6Addr,
 ) -> Result<()> {
+    log_info!("[ICMPv6] Processing Echo Request");
+
     // First, get and swap addresses
     let (new_src, new_dst) = {
         let ip_header = buffer.ipv6_header_mut()?;
@@ -171,15 +214,20 @@ fn process_echo_request(
         (orig_dst, orig_src)
     };
 
+    log_info!("[ICMPv6] Swapped source and destination addresses");
+
     // Now modify the payload
     let payload = buffer.payload_mut(offset)?;
 
     if payload.len() < Icmpv6Echo::SIZE {
+        log_warn!("[ICMPv6] Echo packet too small");
         return Err(Error::InvalidPacket);
     }
 
     // Change type to Echo Reply
     payload[0] = Icmpv6Type::EchoReply as u8;
+
+    log_info!("[ICMPv6] Changed type to Echo Reply");
 
     // Recalculate checksum
     let new_checksum = checksum::calculate_checksum(
@@ -192,6 +240,8 @@ fn process_echo_request(
 
     payload[2] = (new_checksum >> 8) as u8;
     payload[3] = (new_checksum & 0xff) as u8;
+
+    log_info!("[ICMPv6] Echo Reply ready to send");
 
     Ok(())
 }
