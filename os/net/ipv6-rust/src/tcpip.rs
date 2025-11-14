@@ -27,6 +27,9 @@ extern "C" {
     fn rust_debug_log(msg: *const u8);
     fn rust_debug_log_int(msg: *const u8, val: i32);
 
+    // Buffer sync (sync Rust UIP_LEN to C uip_len)
+    fn sync_rust_len_to_c();
+
     // Link layer output
     fn tcpip_rust_network_output(lladdr: *const u8) -> i32;
 
@@ -390,6 +393,12 @@ pub extern "C" fn tcpip_rust_ipv6_output() -> i32 {
 pub extern "C" fn tcpip_rust_output(lladdr: *const u8) -> i32 {
     unsafe {
         rust_debug_log(b"[OUTPUT] tcpip_rust_output() entered\n\0".as_ptr());
+
+        // CRITICAL: Sync Rust UIP_LEN to C uip_len before calling callback!
+        // The callback checks C's uip_len, not Rust's UIP_LEN
+        rust_debug_log(b"[OUTPUT] Syncing Rust len to C uip_len\n\0".as_ptr());
+        sync_rust_len_to_c();
+
         rust_debug_log(b"[OUTPUT] Calling netstack_process_ip_callback(NETSTACK_IP_OUTPUT)\n\0".as_ptr());
 
         let callback_result = netstack_process_ip_callback(NETSTACK_IP_OUTPUT, lladdr);

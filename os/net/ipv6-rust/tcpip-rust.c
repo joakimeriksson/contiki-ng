@@ -60,6 +60,14 @@ void rust_debug_log_int(const char *msg, int val) {
   fflush(stdout);
 }
 
+/* Sync Rust buffer length to C uip_len (needed before network output) */
+void sync_rust_len_to_c(void) {
+  uint16_t *rust_len = uip_len_ptr();
+  uip_len = *rust_len;
+  printf("[SYNC] Synced Rust len to C: uip_len=%d\n", uip_len);
+  fflush(stdout);
+}
+
 /* Process events */
 process_event_t tcpip_event;
 #if UIP_CONF_ICMP6
