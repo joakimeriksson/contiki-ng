@@ -87,15 +87,73 @@ pub fn calculate_checksum(
     !sum as u16
 }
 
-/// Verify checksum
+// Logging (C functions)
+extern "C" {
+    fn rust_debug_log(msg: *const u8);
+    fn rust_debug_log_int(msg: *const u8, val: i32);
+}
+
+/// Verify checksum by calculating over entire packet (including checksum field)
+/// Result should be 0xFFFF if checksum is correct
 pub fn verify_checksum(
     src: &Ipv6Addr,
     dst: &Ipv6Addr,
     payload_len: u32,
     next_header: u8,
     data: &[u8],
-    expected: u16,
+    _expected: u16,
 ) -> bool {
-    let calculated = calculate_checksum(src, dst, payload_len, next_header, data);
-    calculated == expected
+    unsafe {
+        rust_debug_log(b"[CHECKSUM] verify_checksum() called\n\0".as_ptr());
+        rust_debug_log_int(b"[CHECKSUM] payload_len:\0".as_ptr(), payload_len as i32);
+        rust_debug_log_int(b"[CHECKSUM] next_header:\0".as_ptr(), next_header as i32);
+        rust_debug_log_int(b"[CHECKSUM] data.len():\0".as_ptr(), data.len() as i32);
+    }
+
+    // Calculate checksum over pseudo-header + data (including checksum field)
+    // For a valid checksum, the result should be 0xFFFF
+    let mut sum: u32 = 0;
+
+    // Add pseudo-header: source address
+    for i in (0..16).step_by(2) {
+        sum += u16::from_be_bytes([src.u8[i], src.u8[i + 1]]) as u32;
+    }
+
+    // Add pseudo-header: destination address
+    for i in (0..16).step_by(2) {
+        sum += u16::from_be_bytes([dst.u8[i], dst.u8[i + 1]]) as u32;
+    }
+
+    // Add pseudo-header: upper-layer packet length
+    sum += (payload_len >> 16) as u32;
+    sum += (payload_len & 0xFFFF) as u32;
+
+    // Add pseudo-header: next header
+    sum += next_header as u32;
+
+    // Add data (including checksum field)
+    let mut i = 0;
+    while i < data.len() - 1 {
+        sum += u16::from_be_bytes([data[i], data[i + 1]]) as u32;
+        i += 2;
+    }
+
+    // Handle odd byte
+    if i < data.len() {
+        sum += (data[i] as u32) << 8;
+    }
+
+    // Fold 32-bit sum to 16 bits
+    while sum >> 16 != 0 {
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+
+    let result = !sum as u16;
+
+    unsafe {
+        rust_debug_log_int(b"[CHECKSUM] calculated result:\0".as_ptr(), result as i32);
+        rust_debug_log_int(b"[CHECKSUM] valid (should be 0xFFFF):\0".as_ptr(), if result == 0xFFFF { 1 } else { 0 });
+    }
+
+    result == 0xFFFF
 }
