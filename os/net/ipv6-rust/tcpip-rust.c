@@ -46,6 +46,15 @@ extern void *uip_aligned_buf_ptr(void);
 extern void uip_set_len(uint16_t len);
 extern uint16_t uip_get_len(void);
 
+/* Debug logging helpers for Rust */
+void rust_debug_log(const char *msg) {
+  printf("%s", msg);
+}
+
+void rust_debug_log_int(const char *msg, int val) {
+  printf("%s %d\n", msg, val);
+}
+
 /* Process events */
 process_event_t tcpip_event;
 #if UIP_CONF_ICMP6

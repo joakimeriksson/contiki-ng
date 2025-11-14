@@ -23,6 +23,10 @@ extern "C" {
     fn tcpip_rust_log_warn(msg: *const u8);
     fn tcpip_rust_log_err(msg: *const u8);
 
+    // Debug logging helpers (defined in tcpip-rust.c)
+    fn rust_debug_log(msg: *const u8);
+    fn rust_debug_log_int(msg: *const u8, val: i32);
+
     // Link layer output
     fn tcpip_rust_network_output(lladdr: *const u8) -> i32;
 
@@ -80,21 +84,44 @@ pub extern "C" fn tcpip_rust_init() {
 /// Called when PACKET_INPUT event is received
 #[no_mangle]
 pub extern "C" fn tcpip_rust_packet_input() -> i32 {
+    unsafe {
+        rust_debug_log(b"[RUST] tcpip_rust_packet_input() entered\n\0".as_ptr());
+    }
+
     let len = uipbuf::get_len();
 
+    unsafe {
+        rust_debug_log_int(b"[RUST] uipbuf::get_len() returned\0".as_ptr(), len as i32);
+    }
+
     if len == 0 {
+        unsafe {
+            rust_debug_log(b"[RUST] Length is 0, returning early\n\0".as_ptr());
+        }
         log_info!("[TCPIP] Packet input: empty buffer (len=0)");
         return 0;
     }
 
+    unsafe {
+        rust_debug_log(b"[RUST] Length is non-zero, processing packet\n\0".as_ptr());
+    }
     log_info!("[TCPIP] Packet input: processing packet");
 
     // Get packet buffer
+    unsafe {
+        rust_debug_log(b"[RUST] Getting buffer slice\n\0".as_ptr());
+    }
     let buf = &mut uipbuf::get_buffer()[..len as usize];
 
     // Process with Rust IPv6 stack
+    unsafe {
+        rust_debug_log(b"[RUST] Calling ipv6::process_input()\n\0".as_ptr());
+    }
     match ipv6::process_input(buf) {
         Ok(_) => {
+            unsafe {
+                rust_debug_log(b"[RUST] ipv6::process_input() returned Ok\n\0".as_ptr());
+            }
             log_info!("[TCPIP] Packet processed successfully");
             // If there's output to send, handle it
             if uipbuf::get_len() > 0 {
@@ -105,7 +132,10 @@ pub extern "C" fn tcpip_rust_packet_input() -> i32 {
             }
             0
         }
-        Err(_) => {
+        Err(e) => {
+            unsafe {
+                rust_debug_log(b"[RUST] ipv6::process_input() returned Err\n\0".as_ptr());
+            }
             log_warn!("[TCPIP] Packet processing FAILED");
             uipbuf::clear();
             -1
