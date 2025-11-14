@@ -393,6 +393,7 @@ PROCESS_THREAD(tcpip_process, ev, data)
 
     /* Dispatch to Rust event handler */
     if(ev == PROCESS_EVENT_TIMER) {
+      printf("[RUST-TCPIP] --> Taking TIMER branch\n");
       /* Handle periodic timer */
       if(data == &periodic && etimer_expired(&periodic)) {
         etimer_restart(&periodic);
@@ -420,8 +421,10 @@ PROCESS_THREAD(tcpip_process, ev, data)
       }
 #endif
     } else if(ev == tcpip_event) {
+      printf("[RUST-TCPIP] --> Taking TCPIP_EVENT branch!\n");
       /* Check event type from data pointer */
       int *event_type = (int *)data;
+      printf("[RUST-TCPIP] data=%p, event_type=%d\n", data, event_type ? *event_type : -1);
       LOG_INFO("[C] tcpip_event received, type=%d\n", event_type ? *event_type : -1);
 
       if(event_type && *event_type == PACKET_INPUT) {
@@ -451,6 +454,7 @@ PROCESS_THREAD(tcpip_process, ev, data)
         LOG_DBG("[C] UDP poll event (not implemented)\n");
       }
     } else {
+      printf("[RUST-TCPIP] --> Taking ELSE branch (other event: %d)\n", ev);
       LOG_DBG("[C] Other event: %d\n", ev);
     }
   }
