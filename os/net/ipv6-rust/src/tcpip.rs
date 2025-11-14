@@ -340,6 +340,29 @@ pub extern "C" fn tcpip_rust_ipv6_output() -> i32 {
             rust_debug_log_int(b"[OUTPUT] lladdr[0]:\0".as_ptr(), lladdr[0] as i32);
             rust_debug_log_int(b"[OUTPUT] lladdr[7]:\0".as_ptr(), lladdr[7] as i32);
         }
+
+        // Add to neighbor cache so we don't need to autofill every time
+        let link_addr = LinkAddr {
+            addr: lladdr,
+            len: 8,
+        };
+
+        unsafe {
+            rust_debug_log(b"[OUTPUT] Adding autofilled neighbor to cache\n\0".as_ptr());
+        }
+
+        match nd6::nbr_add(&nexthop, &link_addr, false, nd6::NbrState::Reachable) {
+            Ok(_) => {
+                unsafe {
+                    rust_debug_log(b"[OUTPUT] Neighbor added to cache successfully\n\0".as_ptr());
+                }
+            }
+            Err(_) => {
+                unsafe {
+                    rust_debug_log(b"[OUTPUT] Warning: Failed to add neighbor to cache (cache full?)\n\0".as_ptr());
+                }
+            }
+        }
     } else {
         unsafe {
             rust_debug_log(b"[OUTPUT] Neighbor found in cache\n\0".as_ptr());
