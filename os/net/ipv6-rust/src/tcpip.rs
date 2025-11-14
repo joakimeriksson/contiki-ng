@@ -174,11 +174,22 @@ pub extern "C" fn tcpip_rust_input() {
 /// Output an IPv6 packet with routing
 #[no_mangle]
 pub extern "C" fn tcpip_rust_ipv6_output() -> i32 {
+    unsafe {
+        rust_debug_log(b"[OUTPUT] tcpip_rust_ipv6_output() entered\n\0".as_ptr());
+    }
+
     let len = uipbuf::get_len();
+
+    unsafe {
+        rust_debug_log_int(b"[OUTPUT] uipbuf::get_len() returned:\0".as_ptr(), len as i32);
+    }
 
     log_info!("[OUTPUT] IPv6 output called");
 
     if len == 0 {
+        unsafe {
+            rust_debug_log(b"[OUTPUT] ERROR: len=0, returning early\n\0".as_ptr());
+        }
         log_warn!("[OUTPUT] Empty buffer, nothing to send");
         return 0;
     }
