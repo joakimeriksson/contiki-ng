@@ -37,10 +37,8 @@ ifeq ($(UIP6_RUST_ENABLED),1)
   CFLAGS += -DUIP6_RUST_CONF_ENABLE=1
   CFLAGS += -DUIP_CONF_IPV6=1
 
-  # Link with the Rust library
-  TARGET_LIBFILES += $(RUST_LIB)
-
-  # Also add to PROJECT_LIBRARIES so it's built as a prerequisite
+  # Add to PROJECT_LIBRARIES so it's built as a prerequisite and linked
+  # Note: We only add to PROJECT_LIBRARIES, not TARGET_LIBFILES, to avoid duplicate linking
   PROJECT_LIBRARIES += $(RUST_LIB)
 
   # Add glue layer and Rust TCP/IP wrapper
