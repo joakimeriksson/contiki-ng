@@ -429,9 +429,16 @@ PROCESS_THREAD(tcpip_process, ev, data)
       /* Check event type from data pointer */
       int *event_type = (int *)data;
       printf("[RUST-TCPIP] data=%p, event_type=%d\n", data, event_type ? *event_type : -1);
+      printf("[RUST-TCPIP] PACKET_INPUT constant=%d, TCP_POLL=%d, UDP_POLL=%d\n",
+             PACKET_INPUT, TCP_POLL, UDP_POLL);
+      printf("[RUST-TCPIP] Checking: event_type=%d, *event_type=%d, PACKET_INPUT=%d\n",
+             (event_type != NULL), event_type ? *event_type : -999, PACKET_INPUT);
+      printf("[RUST-TCPIP] Comparison result: (*event_type == PACKET_INPUT) = %d\n",
+             event_type ? (*event_type == PACKET_INPUT) : -1);
       LOG_INFO("[C] tcpip_event received, type=%d\n", event_type ? *event_type : -1);
 
       if(event_type && *event_type == PACKET_INPUT) {
+        printf("[RUST-TCPIP] --> PACKET_INPUT branch entered!\n");
         LOG_INFO("[C] PACKET_INPUT: uip_len=%d\n", uip_len);
 
         /* Sync C buffer length to Rust */
@@ -451,11 +458,16 @@ PROCESS_THREAD(tcpip_process, ev, data)
         uip_len = *rust_len_ptr;
         LOG_INFO("[C] After Rust processing: uip_len=%d\n", uip_len);
       } else if(event_type && *event_type == TCP_POLL) {
+        printf("[RUST-TCPIP] --> TCP_POLL branch (not implemented)\n");
         /* TCP polling - will be handled when TCP is ported to Rust */
         LOG_DBG("[C] TCP poll event (not implemented)\n");
       } else if(event_type && *event_type == UDP_POLL) {
+        printf("[RUST-TCPIP] --> UDP_POLL branch (not implemented)\n");
         /* UDP polling - will be handled when UDP is ported to Rust */
         LOG_DBG("[C] UDP poll event (not implemented)\n");
+      } else {
+        printf("[RUST-TCPIP] --> No event_type match! event_type=%p, *event_type=%d\n",
+               event_type, event_type ? *event_type : -999);
       }
     } else {
       printf("[RUST-TCPIP] --> Taking ELSE branch (other event: %d)\n", ev);
