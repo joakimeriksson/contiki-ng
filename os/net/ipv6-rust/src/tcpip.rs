@@ -123,11 +123,25 @@ pub extern "C" fn tcpip_rust_packet_input() -> i32 {
                 rust_debug_log(b"[RUST] ipv6::process_input() returned Ok\n\0".as_ptr());
             }
             log_info!("[TCPIP] Packet processed successfully");
+
+            // The buffer may have been modified in-place (e.g., Echo Reply)
+            // Preserve the length for output
+            unsafe {
+                rust_debug_log_int(b"[RUST] Buffer length after processing:\0".as_ptr(), len as i32);
+            }
+            uipbuf::set_len(len as u16);
+
             // If there's output to send, handle it
             if uipbuf::get_len() > 0 {
+                unsafe {
+                    rust_debug_log(b"[RUST] Output available, calling ipv6_output\n\0".as_ptr());
+                }
                 log_info!("[TCPIP] Output available, calling ipv6_output");
                 tcpip_rust_ipv6_output();
             } else {
+                unsafe {
+                    rust_debug_log(b"[RUST] No output to send\n\0".as_ptr());
+                }
                 log_info!("[TCPIP] No output to send");
             }
             0
