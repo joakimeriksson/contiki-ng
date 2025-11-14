@@ -316,17 +316,31 @@ pub extern "C" fn tcpip_rust_ipv6_output() -> i32 {
 
     if nbr_result < 0 {
         unsafe {
-            rust_debug_log(b"[OUTPUT] ERROR: Neighbor not in cache, dropping packet\n\0".as_ptr());
+            rust_debug_log(b"[OUTPUT] Neighbor not in cache, using autofill\n\0".as_ptr());
         }
-        log_info!("[OUTPUT] Neighbor not in cache - need NS");
-        // In real implementation, would trigger NS and queue packet
-        // For now, just drop
-        uipbuf::clear();
-        return -1;
-    }
+        log_info!("[OUTPUT] Neighbor not in cache - using autofill");
 
-    unsafe {
-        rust_debug_log(b"[OUTPUT] Neighbor found in cache\n\0".as_ptr());
+        // Autofill: Derive link-layer address from IPv6 address
+        // This is not standard-compliant but convenient for native/tun6
+        // For 8-byte lladdr: copy last 8 bytes of IPv6 and flip universal/local bit
+        lladdr[0] = nexthop.u8[8] ^ 0x02;
+        lladdr[1] = nexthop.u8[9];
+        lladdr[2] = nexthop.u8[10];
+        lladdr[3] = nexthop.u8[11];
+        lladdr[4] = nexthop.u8[12];
+        lladdr[5] = nexthop.u8[13];
+        lladdr[6] = nexthop.u8[14];
+        lladdr[7] = nexthop.u8[15];
+
+        unsafe {
+            rust_debug_log(b"[OUTPUT] Autofilled link-layer address from IPv6 IID\n\0".as_ptr());
+            rust_debug_log_int(b"[OUTPUT] lladdr[0]:\0".as_ptr(), lladdr[0] as i32);
+            rust_debug_log_int(b"[OUTPUT] lladdr[7]:\0".as_ptr(), lladdr[7] as i32);
+        }
+    } else {
+        unsafe {
+            rust_debug_log(b"[OUTPUT] Neighbor found in cache\n\0".as_ptr());
+        }
     }
 
     // Send packet to link layer
