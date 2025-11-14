@@ -4,6 +4,12 @@
 
 use crate::types::*;
 
+// Debug logging helpers
+extern "C" {
+    fn rust_debug_log(msg: *const u8);
+    fn rust_debug_log_int(msg: *const u8, val: i32);
+}
+
 /// Maximum number of IPv6 addresses per interface
 const MAX_ADDRS: usize = 4;
 
@@ -132,9 +138,36 @@ impl Ds6Netif {
 
     /// Lookup an IPv6 address
     pub fn addr_lookup(&self, addr: &Ipv6Addr) -> Option<&Ds6Addr> {
-        self.addrs
-            .iter()
-            .find(|entry| entry.is_used() && entry.ipaddr == *addr)
+        unsafe {
+            rust_debug_log(b"[addr_lookup] Looking up address\n\0".as_ptr());
+        }
+
+        for (i, entry) in self.addrs.iter().enumerate() {
+            if entry.is_used() {
+                unsafe {
+                    rust_debug_log_int(b"[addr_lookup] Checking addr slot:\0".as_ptr(), i as i32);
+                    rust_debug_log_int(b"[addr_lookup]   Configured addr byte 0:\0".as_ptr(), entry.ipaddr.u8[0] as i32);
+                    rust_debug_log_int(b"[addr_lookup]   Configured addr byte 1:\0".as_ptr(), entry.ipaddr.u8[1] as i32);
+                    rust_debug_log_int(b"[addr_lookup]   Configured addr byte 14:\0".as_ptr(), entry.ipaddr.u8[14] as i32);
+                    rust_debug_log_int(b"[addr_lookup]   Configured addr byte 15:\0".as_ptr(), entry.ipaddr.u8[15] as i32);
+                }
+                if entry.ipaddr == *addr {
+                    unsafe {
+                        rust_debug_log(b"[addr_lookup] MATCH FOUND!\n\0".as_ptr());
+                    }
+                    return Some(entry);
+                } else {
+                    unsafe {
+                        rust_debug_log(b"[addr_lookup]   No match, continuing\n\0".as_ptr());
+                    }
+                }
+            }
+        }
+
+        unsafe {
+            rust_debug_log(b"[addr_lookup] No match found in any slot\n\0".as_ptr());
+        }
+        None
     }
 
     /// Remove an IPv6 address

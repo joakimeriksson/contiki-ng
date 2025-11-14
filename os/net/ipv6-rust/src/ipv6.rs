@@ -190,25 +190,65 @@ pub fn process_input(data: &mut [u8]) -> Result<()> {
 
 /// Check if destination address is for us
 fn is_for_us(addr: &Ipv6Addr) -> bool {
+    unsafe {
+        rust_debug_log(b"[is_for_us] Checking destination address\n\0".as_ptr());
+        // Print destination address bytes
+        rust_debug_log_int(b"[is_for_us] Dest addr byte 0:\0".as_ptr(), addr.u8[0] as i32);
+        rust_debug_log_int(b"[is_for_us] Dest addr byte 1:\0".as_ptr(), addr.u8[1] as i32);
+        rust_debug_log_int(b"[is_for_us] Dest addr byte 14:\0".as_ptr(), addr.u8[14] as i32);
+        rust_debug_log_int(b"[is_for_us] Dest addr byte 15:\0".as_ptr(), addr.u8[15] as i32);
+    }
+
     let netif = ds6::get_netif();
 
+    unsafe {
+        rust_debug_log(b"[is_for_us] Checking unicast addresses\n\0".as_ptr());
+    }
+
     // Check unicast addresses
-    if netif.addr_lookup(addr).is_some() {
+    let lookup_result = netif.addr_lookup(addr);
+    if lookup_result.is_some() {
+        unsafe {
+            rust_debug_log(b"[is_for_us] Found in unicast addresses!\n\0".as_ptr());
+        }
         return true;
     }
 
+    unsafe {
+        rust_debug_log(b"[is_for_us] Not in unicast addresses, checking multicast\n\0".as_ptr());
+    }
+
     // Check multicast addresses
-    for maddr in &netif.maddrs {
-        if maddr.is_used && maddr.ipaddr == *addr {
-            return true;
+    for (i, maddr) in netif.maddrs.iter().enumerate() {
+        if maddr.is_used {
+            unsafe {
+                rust_debug_log_int(b"[is_for_us] Checking maddr slot:\0".as_ptr(), i as i32);
+            }
+            if maddr.ipaddr == *addr {
+                unsafe {
+                    rust_debug_log(b"[is_for_us] Found in multicast addresses!\n\0".as_ptr());
+                }
+                return true;
+            }
         }
+    }
+
+    unsafe {
+        rust_debug_log(b"[is_for_us] Not in multicast, checking all-nodes\n\0".as_ptr());
     }
 
     // Check all-nodes multicast (FF02::1)
     if addr.u8[0] == 0xff && addr.u8[1] == 0x02 &&
        addr.u8[15] == 0x01 &&
        addr.u8[2..15].iter().all(|&b| b == 0) {
+        unsafe {
+            rust_debug_log(b"[is_for_us] Matches all-nodes multicast!\n\0".as_ptr());
+        }
         return true;
+    }
+
+    unsafe {
+        rust_debug_log(b"[is_for_us] Address not recognized, returning false\n\0".as_ptr());
     }
 
     false
