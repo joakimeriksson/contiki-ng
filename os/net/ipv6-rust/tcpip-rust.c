@@ -83,6 +83,9 @@ enum {
 /* Track event type for current event */
 static int current_event_type;
 
+/* Track whether we've imported addresses from C to Rust */
+static bool addresses_imported = false;
+
 /*---------------------------------------------------------------------------*/
 /* Helper functions for Rust to call C code */
 /*---------------------------------------------------------------------------*/
@@ -428,8 +431,8 @@ PROCESS_THREAD(tcpip_process, ev, data)
   /* Initialize routing protocol */
   NETSTACK_ROUTING.init();
 
-  /* Import addresses from C ds6 to Rust ds6 */
-  import_addresses_to_rust();
+  /* Note: We don't import addresses here because they haven't been
+   * added yet. Addresses will be imported on first packet input. */
 
   /* Main event loop */
   printf("[RUST-TCPIP] Event loop started, tcpip_event=%d, PROCESS_EVENT_TIMER=%d\n",
@@ -488,6 +491,14 @@ PROCESS_THREAD(tcpip_process, ev, data)
 
       if(event_type && *event_type == PACKET_INPUT) {
         printf("[RUST-TCPIP] --> PACKET_INPUT branch entered!\n");
+
+        /* Import addresses from C on first packet (lazy import) */
+        if(!addresses_imported) {
+          printf("[RUST-TCPIP] First packet - importing addresses from C...\n");
+          import_addresses_to_rust();
+          addresses_imported = true;
+        }
+
         printf("[RUST-TCPIP] Step 1: uip_len=%d\n", uip_len);
         LOG_INFO("[C] PACKET_INPUT: uip_len=%d\n", uip_len);
 
