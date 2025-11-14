@@ -60,11 +60,19 @@ void rust_debug_log_int(const char *msg, int val) {
   fflush(stdout);
 }
 
-/* Sync Rust buffer length to C uip_len (needed before network output) */
+/* Sync Rust buffer and length to C (needed before network output) */
 void sync_rust_len_to_c(void) {
   uint16_t *rust_len = uip_len_ptr();
+  uint8_t *rust_buf = uip_buf_ptr();
+
+  // Copy buffer data from Rust to C
   uip_len = *rust_len;
-  printf("[SYNC] Synced Rust len to C: uip_len=%d\n", uip_len);
+  if(uip_len > 0 && uip_len <= sizeof(uip_aligned_buf.u8)) {
+    memcpy(uip_aligned_buf.u8, rust_buf, uip_len);
+    printf("[SYNC] Synced Rust buffer to C: uip_len=%d, copied %d bytes\n", uip_len, uip_len);
+  } else {
+    printf("[SYNC] WARNING: Invalid length %d, not copying buffer\n", uip_len);
+  }
   fflush(stdout);
 }
 
