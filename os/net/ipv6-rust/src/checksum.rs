@@ -148,12 +148,20 @@ pub fn verify_checksum(
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
 
-    let result = !sum as u16;
+    let sum16 = sum as u16;
 
     unsafe {
-        rust_debug_log_int(b"[CHECKSUM] calculated result:\0".as_ptr(), result as i32);
-        rust_debug_log_int(b"[CHECKSUM] valid (should be 0xFFFF):\0".as_ptr(), if result == 0xFFFF { 1 } else { 0 });
+        rust_debug_log_int(b"[CHECKSUM] sum after folding:\0".as_ptr(), sum16 as i32);
     }
 
-    result == 0xFFFF
+    // For verification, sum should be 0 (or 0xFFFF, which represents 0 in one's complement)
+    // The C code returns: (sum == 0) ? 0xffff : uip_htons(sum)
+    // And checks: if(uip_icmp6chksum() != 0xffff)
+    let is_valid = sum16 == 0 || sum16 == 0xFFFF;
+
+    unsafe {
+        rust_debug_log_int(b"[CHECKSUM] is_valid:\0".as_ptr(), if is_valid { 1 } else { 0 });
+    }
+
+    is_valid
 }
