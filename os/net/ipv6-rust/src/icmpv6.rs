@@ -271,6 +271,11 @@ fn process_echo_request(
 
     log_info!("[ICMPv6] Changed type to Echo Reply");
 
+    // CRITICAL: Zero out the checksum field before recalculating!
+    // The checksum must be 0 when calculating the new checksum
+    payload[2] = 0;
+    payload[3] = 0;
+
     // Recalculate checksum
     let new_checksum = checksum::calculate_checksum(
         &new_src,

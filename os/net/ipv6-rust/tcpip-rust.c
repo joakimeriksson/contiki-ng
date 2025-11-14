@@ -125,7 +125,27 @@ void tcpip_rust_log_err(const char *msg)
 /* Network layer output */
 int tcpip_rust_network_output(const uint8_t *lladdr)
 {
-  return NETSTACK_NETWORK.output((const linkaddr_t *)lladdr);
+  printf("[RUST-NET-OUT] tcpip_rust_network_output() called, uip_len=%d\n", uip_len);
+  fflush(stdout);
+
+  if(uip_len > 0) {
+    printf("[RUST-NET-OUT] Buffer has data, first 40 bytes:\n");
+    printf("[RUST-NET-OUT] ");
+    for(int i = 0; i < 40 && i < uip_len; i++) {
+      printf("%02x ", uip_buf[i]);
+      if((i + 1) % 16 == 0) printf("\n[RUST-NET-OUT] ");
+    }
+    printf("\n");
+    fflush(stdout);
+  } else {
+    printf("[RUST-NET-OUT] WARNING: uip_len is 0!\n");
+    fflush(stdout);
+  }
+
+  int result = NETSTACK_NETWORK.output((const linkaddr_t *)lladdr);
+  printf("[RUST-NET-OUT] NETSTACK_NETWORK.output() returned %d\n", result);
+  fflush(stdout);
+  return result;
 }
 
 /* Routing helpers */
