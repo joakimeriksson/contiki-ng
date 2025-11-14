@@ -59,9 +59,14 @@ macro_rules! log_err {
 }
 
 // Constants
+// Note: These must match the C enums in os/net/netstack.h
+// enum netstack_ip_callback_type
 const NETSTACK_IP_INPUT: u8 = 0;
 const NETSTACK_IP_OUTPUT: u8 = 1;
-const NETSTACK_IP_PROCESS: u8 = 1;
+
+// enum netstack_ip_action
+const NETSTACK_IP_PROCESS: u8 = 0;  // Default - process the packet
+const NETSTACK_IP_DROP: u8 = 1;     // Drop the packet
 
 const UIP_LINK_MTU: u16 = 1280;
 const UIPBUF_ATTR_MAX_MAC_TRANSMISSIONS: u8 = 1;

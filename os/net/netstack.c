@@ -39,6 +39,7 @@
 
 #include "net/netstack.h"
 #include "lib/list.h"
+#include <stdio.h>
 
 /* The list of IP processors that will process IP packets before uip or after */
 LIST(ip_processor_list);
@@ -49,22 +50,51 @@ netstack_process_ip_callback(uint8_t type, const linkaddr_t *localdest)
 {
   enum netstack_ip_action action = NETSTACK_IP_PROCESS;
   struct netstack_ip_packet_processor *p;
+  int processor_count = 0;
+
+  printf("[NETSTACK] netstack_process_ip_callback() called, type=%d\n", type);
+  fflush(stdout);
+
   for(p = list_head(ip_processor_list);
       p != NULL;
       p = list_item_next(p)) {
+    processor_count++;
+    printf("[NETSTACK] Processing IP processor #%d at %p\n", processor_count, (void*)p);
+    fflush(stdout);
+
     if(type == NETSTACK_IP_OUTPUT) {
       if(p->process_output != NULL) {
+        printf("[NETSTACK] Calling process_output() at %p\n", (void*)p->process_output);
+        fflush(stdout);
         action = p->process_output(localdest);
+        printf("[NETSTACK] process_output() returned action=%d\n", action);
+        fflush(stdout);
+      } else {
+        printf("[NETSTACK] process_output is NULL\n");
+        fflush(stdout);
       }
     } else if(type == NETSTACK_IP_INPUT) {
       if(p->process_input != NULL) {
+        printf("[NETSTACK] Calling process_input() at %p\n", (void*)p->process_input);
+        fflush(stdout);
         action = p->process_input();
+        printf("[NETSTACK] process_input() returned action=%d\n", action);
+        fflush(stdout);
+      } else {
+        printf("[NETSTACK] process_input is NULL\n");
+        fflush(stdout);
       }
     }
     /* if not NETSTACK_IP_PROCESS - quit and return the desired action */
-    if(action != NETSTACK_IP_PROCESS)
+    if(action != NETSTACK_IP_PROCESS) {
+      printf("[NETSTACK] Action is not PROCESS (%d), returning early\n", action);
+      fflush(stdout);
       return action;
+    }
   }
+
+  printf("[NETSTACK] Finished processing %d IP processors, returning action=%d\n", processor_count, action);
+  fflush(stdout);
   return action;
 }
 /*---------------------------------------------------------------------------*/
