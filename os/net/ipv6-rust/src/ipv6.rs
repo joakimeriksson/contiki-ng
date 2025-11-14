@@ -9,6 +9,8 @@ extern "C" {
     fn tcpip_rust_log_info(msg: *const u8);
     fn tcpip_rust_log_warn(msg: *const u8);
     fn tcpip_rust_log_err(msg: *const u8);
+    fn rust_debug_log(msg: *const u8);
+    fn rust_debug_log_int(msg: *const u8, val: i32);
 }
 
 macro_rules! log_info {
@@ -37,28 +39,66 @@ pub const DEFAULT_HOP_LIMIT: u8 = 64;
 
 /// Process an incoming IPv6 packet
 pub fn process_input(data: &mut [u8]) -> Result<()> {
+    unsafe {
+        rust_debug_log(b"[IPv6] process_input() entered\n\0".as_ptr());
+        rust_debug_log_int(b"[IPv6] Packet length:\0".as_ptr(), data.len() as i32);
+    }
     log_info!("[IPv6] Processing input packet");
 
     let mut buffer = UipBuffer::new(data);
 
     // Verify minimum packet size
+    unsafe {
+        rust_debug_log_int(b"[IPv6] Checking min size (need 40, have:\0".as_ptr(), buffer.len() as i32);
+    }
     if buffer.len() < Ipv6Header::SIZE {
+        unsafe {
+            rust_debug_log(b"[IPv6] ERROR: Packet too small!\n\0".as_ptr());
+        }
         log_warn!("[IPv6] Packet too small for IPv6 header");
         return Err(Error::InvalidPacket);
     }
 
     // Parse IPv6 header
-    let ip_header = buffer.ipv6_header()?;
+    unsafe {
+        rust_debug_log(b"[IPv6] Parsing IPv6 header\n\0".as_ptr());
+    }
+    let ip_header = match buffer.ipv6_header() {
+        Ok(h) => {
+            unsafe {
+                rust_debug_log(b"[IPv6] IPv6 header parsed successfully\n\0".as_ptr());
+            }
+            h
+        }
+        Err(e) => {
+            unsafe {
+                rust_debug_log(b"[IPv6] ERROR: Failed to parse IPv6 header!\n\0".as_ptr());
+            }
+            return Err(e);
+        }
+    };
 
     // Verify version
+    unsafe {
+        rust_debug_log_int(b"[IPv6] IP version:\0".as_ptr(), ip_header.version() as i32);
+    }
     if ip_header.version() != 6 {
+        unsafe {
+            rust_debug_log(b"[IPv6] ERROR: Invalid IP version!\n\0".as_ptr());
+        }
         log_warn!("[IPv6] Invalid IP version (not IPv6)");
         return Err(Error::InvalidPacket);
     }
 
     // Check payload length
     let payload_len = ip_header.payload_len() as usize;
+    unsafe {
+        rust_debug_log_int(b"[IPv6] Payload length:\0".as_ptr(), payload_len as i32);
+    }
     if Ipv6Header::SIZE + payload_len > buffer.len() {
+        unsafe {
+            rust_debug_log(b"[IPv6] ERROR: Payload length mismatch!\n\0".as_ptr());
+        }
         log_warn!("[IPv6] Payload length mismatch");
         return Err(Error::InvalidPacket);
     }
@@ -67,26 +107,57 @@ pub fn process_input(data: &mut [u8]) -> Result<()> {
     let src = ip_header.srcipaddr;
     let dst = ip_header.destipaddr;
 
+    unsafe {
+        rust_debug_log(b"[IPv6] Packet parsed, checking destination\n\0".as_ptr());
+    }
     log_info!("[IPv6] Packet parsed, checking destination");
 
     // Check if packet is for us
+    unsafe {
+        rust_debug_log(b"[IPv6] Calling is_for_us()\n\0".as_ptr());
+    }
     if !is_for_us(&dst) {
+        unsafe {
+            rust_debug_log(b"[IPv6] Packet not for us, forwarding\n\0".as_ptr());
+        }
         log_info!("[IPv6] Packet not for us, forwarding");
         // Forward packet if we're a router
         return forward_packet(&mut buffer);
     }
 
+    unsafe {
+        rust_debug_log(b"[IPv6] Packet is for us!\n\0".as_ptr());
+    }
     log_info!("[IPv6] Packet is for us");
 
     // Check hop limit
     if ip_header.hlim == 0 {
+        unsafe {
+            rust_debug_log(b"[IPv6] ERROR: Hop limit exceeded!\n\0".as_ptr());
+        }
         log_warn!("[IPv6] Hop limit exceeded");
         icmpv6::send_time_exceeded(&mut buffer, icmpv6::TimeExceededCode::HopLimitExceeded)?;
         return Err(Error::InvalidPacket);
     }
 
     // Process extension headers and get final next header
-    let (next_header, payload_offset) = process_extension_headers(&mut buffer)?;
+    unsafe {
+        rust_debug_log(b"[IPv6] Processing extension headers\n\0".as_ptr());
+    }
+    let (next_header, payload_offset) = match process_extension_headers(&mut buffer) {
+        Ok(res) => {
+            unsafe {
+                rust_debug_log_int(b"[IPv6] Extension headers OK, next_header:\0".as_ptr(), res.0 as i32);
+            }
+            res
+        }
+        Err(e) => {
+            unsafe {
+                rust_debug_log(b"[IPv6] ERROR: Failed to process extension headers!\n\0".as_ptr());
+            }
+            return Err(e);
+        }
+    };
 
     log_info!("[IPv6] Dispatching to upper layer protocol");
 
