@@ -382,6 +382,18 @@ import_addresses_to_rust(void)
       printf("[RUST-TCPIP] Importing address slot %d\n", i);
       printf("[RUST-TCPIP]   State: %d\n", uip_ds6_if.addr_list[i].state);
 
+      /* Debug: print the address bytes from C before passing to Rust */
+      printf("[RUST-TCPIP]   C addr byte 0: %d\n", uip_ds6_if.addr_list[i].ipaddr.u8[0]);
+      printf("[RUST-TCPIP]   C addr byte 1: %d\n", uip_ds6_if.addr_list[i].ipaddr.u8[1]);
+      printf("[RUST-TCPIP]   C addr byte 14: %d\n", uip_ds6_if.addr_list[i].ipaddr.u8[14]);
+      printf("[RUST-TCPIP]   C addr byte 15: %d\n", uip_ds6_if.addr_list[i].ipaddr.u8[15]);
+      printf("[RUST-TCPIP]   Full C address: ");
+      for(int j = 0; j < 16; j++) {
+        printf("%02x", uip_ds6_if.addr_list[i].ipaddr.u8[j]);
+        if(j % 2 == 1 && j < 15) printf(":");
+      }
+      printf("\n");
+
       /* Map C state to Rust state:
        * C: ADDR_TENTATIVE=1, ADDR_PREFERRED=2, ADDR_DEPRECATED=3
        * Rust: Tentative=1, Preferred=2, Deprecated=3 */
