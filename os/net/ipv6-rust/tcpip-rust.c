@@ -33,6 +33,9 @@ extern int tcpip_rust_ipv6_output(void);
 extern int tcpip_rust_output(const uint8_t *lladdr);
 extern void tcpip_rust_eventhandler(uint8_t ev, void *data);
 
+/* Rust DS6 function declarations */
+extern int rust_ds6_addr_add(const uip_ipaddr_t *ipaddr, uint8_t state);
+
 /* Rust UDP function declarations */
 extern struct uip_udp_conn *uip_udp_new_rust(const uip_ipaddr_t *ripaddr, uint16_t rport);
 extern void uip_udp_bind_rust(struct uip_udp_conn *conn, uint16_t lport);
@@ -363,6 +366,38 @@ uint32_t uip_htonl(uint32_t val)
 }
 
 /*---------------------------------------------------------------------------*/
+/* Import IPv6 addresses from C's ds6 to Rust's ds6 */
+/*---------------------------------------------------------------------------*/
+static void
+import_addresses_to_rust(void)
+{
+  printf("[RUST-TCPIP] Importing addresses from C ds6 to Rust ds6...\n");
+  int imported_count = 0;
+
+  for(int i = 0; i < UIP_DS6_ADDR_NB; i++) {
+    if(uip_ds6_if.addr_list[i].isused) {
+      printf("[RUST-TCPIP] Importing address slot %d\n", i);
+      printf("[RUST-TCPIP]   State: %d\n", uip_ds6_if.addr_list[i].state);
+
+      /* Map C state to Rust state:
+       * C: ADDR_TENTATIVE=1, ADDR_PREFERRED=2, ADDR_DEPRECATED=3
+       * Rust: Tentative=1, Preferred=2, Deprecated=3 */
+      uint8_t state = (uint8_t)uip_ds6_if.addr_list[i].state;
+
+      int result = rust_ds6_addr_add(&uip_ds6_if.addr_list[i].ipaddr, state);
+      if(result == 0) {
+        imported_count++;
+        printf("[RUST-TCPIP] Successfully imported address %d\n", i);
+      } else {
+        printf("[RUST-TCPIP] Failed to import address %d\n", i);
+      }
+    }
+  }
+
+  printf("[RUST-TCPIP] Imported %d addresses to Rust ds6\n", imported_count);
+}
+
+/*---------------------------------------------------------------------------*/
 /* Main TCP/IP process */
 /*---------------------------------------------------------------------------*/
 PROCESS(tcpip_process, "TCP/IP stack (Rust)");
@@ -392,6 +427,9 @@ PROCESS_THREAD(tcpip_process, ev, data)
 
   /* Initialize routing protocol */
   NETSTACK_ROUTING.init();
+
+  /* Import addresses from C ds6 to Rust ds6 */
+  import_addresses_to_rust();
 
   /* Main event loop */
   printf("[RUST-TCPIP] Event loop started, tcpip_event=%d, PROCESS_EVENT_TIMER=%d\n",

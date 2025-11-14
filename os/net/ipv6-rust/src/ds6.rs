@@ -241,6 +241,49 @@ pub fn get_netif() -> &'static mut Ds6Netif {
     unsafe { &mut *core::ptr::addr_of_mut!(DS6_IF) }
 }
 
+/// Add an IPv6 address from C (FFI function)
+#[no_mangle]
+pub extern "C" fn rust_ds6_addr_add(ipaddr: *const Ipv6Addr, state: u8) -> i32 {
+    if ipaddr.is_null() {
+        return -1;
+    }
+
+    unsafe {
+        rust_debug_log(b"[ds6] rust_ds6_addr_add() called\n\0".as_ptr());
+        rust_debug_log_int(b"[ds6]   addr byte 0:\0".as_ptr(), (*ipaddr).u8[0] as i32);
+        rust_debug_log_int(b"[ds6]   addr byte 1:\0".as_ptr(), (*ipaddr).u8[1] as i32);
+        rust_debug_log_int(b"[ds6]   addr byte 14:\0".as_ptr(), (*ipaddr).u8[14] as i32);
+        rust_debug_log_int(b"[ds6]   addr byte 15:\0".as_ptr(), (*ipaddr).u8[15] as i32);
+    }
+
+    let addr = unsafe { &*ipaddr };
+    let addr_state = match state {
+        0 => AddrState::Unused,
+        1 => AddrState::Tentative,
+        2 => AddrState::Preferred,
+        3 => AddrState::Deprecated,
+        _ => AddrState::Preferred,
+    };
+
+    let netif = get_netif();
+    match netif.addr_add(addr, AddrType::Manual) {
+        Ok(entry) => {
+            // Set the actual state from C
+            entry.state = addr_state;
+            unsafe {
+                rust_debug_log(b"[ds6] Address added successfully\n\0".as_ptr());
+            }
+            0
+        }
+        Err(_) => {
+            unsafe {
+                rust_debug_log(b"[ds6] Failed to add address\n\0".as_ptr());
+            }
+            -1
+        }
+    }
+}
+
 /// Select source address for a given destination
 pub fn select_src(dest: &Ipv6Addr) -> Option<Ipv6Addr> {
     let netif = get_netif();
