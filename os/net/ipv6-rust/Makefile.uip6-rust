@@ -19,11 +19,14 @@ ifeq ($(UIP6_RUST_ENABLED),1)
 
   $(info Building with Rust IPv6 stack)
 
-  # Build the Rust library if not already built
+  # Build the Rust library - always invoke cargo (it handles incremental builds)
   RUST_LIB = $(UIP6_RUST_DIR)/target/release/libuip6_rust.a
 
-  # Rule to build Rust library
-  $(RUST_LIB):
+  # Force target to always rebuild
+  .PHONY: force
+
+  # Rule to build Rust library - always runs, but cargo only rebuilds if needed
+  $(RUST_LIB): force
 	@echo "Building Rust IPv6 library..."
 	@cd $(UIP6_RUST_DIR) && cargo build --release
 
@@ -36,6 +39,9 @@ ifeq ($(UIP6_RUST_ENABLED),1)
 
   # Link with the Rust library
   TARGET_LIBFILES += $(RUST_LIB)
+
+  # Also add to PROJECT_LIBRARIES so it's built as a prerequisite
+  PROJECT_LIBRARIES += $(RUST_LIB)
 
   # Add glue layer and Rust TCP/IP wrapper
   CONTIKI_SOURCEFILES += uip6-rust-glue.c tcpip-rust.c
