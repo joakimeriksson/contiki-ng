@@ -452,14 +452,20 @@ tun6_net_input(uint8_t *data, int maxlen)
 {
   int size;
 
+  printf("[TUN6] tun6_net_input() called, maxlen=%d\n", maxlen);
+
   if(tunfd == -1) {
+    printf("[TUN6] tunfd is -1, tun not open!\n");
     /* tun is not open */
     return 0;
   }
 
+  printf("[TUN6] Calling read() on tunfd=%d\n", tunfd);
   if((size = read(tunfd, data, maxlen)) == -1) {
+    printf("[TUN6] read() FAILED!\n");
     err(EXIT_FAILURE, "tun6_net_input: read");
   }
+  printf("[TUN6] read() returned %d bytes\n", size);
 
 #ifdef __APPLE__
 #define UTUN_HEADER_LEN 4
@@ -499,6 +505,7 @@ handle_fd(fd_set *rset, fd_set *wset)
   }
 
   if(FD_ISSET(tunfd, rset)) {
+    printf("[TUN6] ===== handle_fd: Data ready on tunfd, calling callback =====\n");
     tun_input_callback();
   }
 }
@@ -509,17 +516,25 @@ handle_fd(fd_set *rset, fd_set *wset)
 static void
 tun_input(void)
 {
+  printf("[TUN6] ===== tun_input() CALLED =====\n");
   int size = tun6_net_input(uip_buf, sizeof(uip_buf));
+  printf("[TUN6] Read %d bytes from tun device\n", size);
   LOG_DBG("TUN data incoming read:%d\n", size);
   uip_len = size;
+  printf("[TUN6] Calling tcpip_input() with uip_len=%d\n", uip_len);
   tcpip_input();
+  printf("[TUN6] tcpip_input() returned\n");
 }
 /*---------------------------------------------------------------------------*/
 static void
 network_init(void)
 {
+  printf("[TUN6] ===== network_init() CALLED =====\n");
   if(!tun6_net_init(tun_input)) {
+    printf("[TUN6] FAILED to open tun device!\n");
     LOG_WARN("Failed to open tun device (you may be lacking permission). Running without network.\n");
+  } else {
+    printf("[TUN6] Tun device opened successfully, callback registered\n");
   }
 }
 /*---------------------------------------------------------------------------*/
@@ -527,11 +542,15 @@ static uint8_t
 network_output(const linkaddr_t *localdest)
 {
   if(uip_len > 0) {
+    printf("[TUN6] network_output() called with %u bytes\n", uip_len);
     LOG_DBG("output: %u bytes to ", uip_len);
     LOG_DBG_LLADDR(localdest);
     LOG_DBG_("\n");
-    return tun6_net_output(uip_buf, uip_len);
+    uint8_t result = tun6_net_output(uip_buf, uip_len);
+    printf("[TUN6] tun6_net_output() returned %d\n", result);
+    return result;
   }
+  printf("[TUN6] network_output() called but uip_len=0\n");
   return 0;
 }
 /*---------------------------------------------------------------------------*/
