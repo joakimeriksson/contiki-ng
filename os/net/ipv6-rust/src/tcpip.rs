@@ -343,17 +343,45 @@ pub extern "C" fn tcpip_rust_ipv6_output() -> i32 {
         }
     }
 
+    unsafe {
+        rust_debug_log(b"[OUTPUT] Proceeding to send packet to link layer\n\0".as_ptr());
+    }
+
     // Send packet to link layer
     log_info!("[OUTPUT] Neighbor found, sending to link layer");
+
+    unsafe {
+        rust_debug_log(b"[OUTPUT] Calling tcpip_rust_output()\n\0".as_ptr());
+    }
+
     let result = tcpip_rust_output(lladdr.as_ptr());
 
+    unsafe {
+        rust_debug_log_int(b"[OUTPUT] tcpip_rust_output() returned:\0".as_ptr(), result);
+    }
+
     if result >= 0 {
+        unsafe {
+            rust_debug_log(b"[OUTPUT] Packet sent successfully\n\0".as_ptr());
+        }
         log_info!("[OUTPUT] Packet sent successfully");
     } else {
+        unsafe {
+            rust_debug_log(b"[OUTPUT] Link layer send failed\n\0".as_ptr());
+        }
         log_warn!("[OUTPUT] Link layer send failed");
     }
 
+    unsafe {
+        rust_debug_log(b"[OUTPUT] Clearing buffer before return\n\0".as_ptr());
+    }
+
     uipbuf::clear();
+
+    unsafe {
+        rust_debug_log_int(b"[OUTPUT] Returning result:\0".as_ptr(), result);
+    }
+
     result
 }
 
