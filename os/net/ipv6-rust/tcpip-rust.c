@@ -440,6 +440,10 @@ PROCESS_THREAD(tcpip_process, ev, data)
   /* Start periodic timer */
   etimer_set(&periodic, CLOCK_SECOND / 2);
 
+  /* Initialize C's DS6 structures (sets default prefix to fd00::) */
+  printf("[RUST-TCPIP] Calling uip_ds6_init() to set default prefix\n");
+  uip_ds6_init();
+
   /* Initialize routing protocol */
   NETSTACK_ROUTING.init();
 
