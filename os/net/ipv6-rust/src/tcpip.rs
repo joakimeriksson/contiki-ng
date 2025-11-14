@@ -186,6 +186,10 @@ pub extern "C" fn tcpip_rust_ipv6_output() -> i32 {
 
     log_info!("[OUTPUT] IPv6 output called");
 
+    unsafe {
+        rust_debug_log(b"[OUTPUT] Checking len==0\n\0".as_ptr());
+    }
+
     if len == 0 {
         unsafe {
             rust_debug_log(b"[OUTPUT] ERROR: len=0, returning early\n\0".as_ptr());
@@ -194,10 +198,18 @@ pub extern "C" fn tcpip_rust_ipv6_output() -> i32 {
         return 0;
     }
 
+    unsafe {
+        rust_debug_log(b"[OUTPUT] Checking len > MTU\n\0".as_ptr());
+    }
+
     if len > UIP_LINK_MTU {
         log_err!("[OUTPUT] Packet too big for link MTU");
         uipbuf::clear();
         return -1;
+    }
+
+    unsafe {
+        rust_debug_log(b"[OUTPUT] Checking len < 40\n\0".as_ptr());
     }
 
     // Get destination address from packet
@@ -207,31 +219,58 @@ pub extern "C" fn tcpip_rust_ipv6_output() -> i32 {
         return -1;
     }
 
+    unsafe {
+        rust_debug_log(b"[OUTPUT] Getting buffer and parsing IPv6 header\n\0".as_ptr());
+    }
+
     let buffer = uipbuf::get_buffer();
     let ipv6_hdr = unsafe { &*(buffer.as_ptr() as *const Ipv6Header) };
     let dest_addr = &ipv6_hdr.destipaddr;
 
+    unsafe {
+        rust_debug_log(b"[OUTPUT] Parsed destination address\n\0".as_ptr());
+        rust_debug_log_int(b"[OUTPUT] dest_addr byte 0:\0".as_ptr(), dest_addr.u8[0] as i32);
+    }
+
     // Check if destination is unspecified
     if dest_addr.is_unspecified() {
+        unsafe {
+            rust_debug_log(b"[OUTPUT] ERROR: dest is unspecified\n\0".as_ptr());
+        }
         log_err!("[OUTPUT] Destination address is unspecified");
         uipbuf::clear();
         return -1;
     }
 
+    unsafe {
+        rust_debug_log(b"[OUTPUT] Destination address is valid\n\0".as_ptr());
+    }
     log_info!("[OUTPUT] Destination address valid");
 
     // Handle multicast
     if dest_addr.is_multicast() {
+        unsafe {
+            rust_debug_log(b"[OUTPUT] Multicast destination\n\0".as_ptr());
+        }
         log_info!("[OUTPUT] Multicast destination, sending directly");
         return tcpip_rust_output(ptr::null());
+    }
+
+    unsafe {
+        rust_debug_log(b"[OUTPUT] Checking if dest is my addr\n\0".as_ptr());
     }
 
     // Check if sending to ourselves (loopback)
     unsafe {
         if tcpip_rust_is_my_addr(dest_addr) != 0 {
+            rust_debug_log(b"[OUTPUT] Loopback detected\n\0".as_ptr());
             log_info!("[OUTPUT] Loopback: sending to self");
             return tcpip_rust_packet_input();
         }
+    }
+
+    unsafe {
+        rust_debug_log(b"[OUTPUT] Not loopback, looking up next hop\n\0".as_ptr());
     }
 
     // Get next hop
