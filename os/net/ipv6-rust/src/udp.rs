@@ -104,7 +104,8 @@ fn find_unused_port() -> u16 {
             }
 
             let mut port_in_use = false;
-            for conn in &UDP_CONNS {
+            let conns = &*core::ptr::addr_of!(UDP_CONNS);
+            for conn in conns {
                 if conn.lport == LASTPORT.to_be() {
                     port_in_use = true;
                     break;
@@ -124,7 +125,8 @@ pub fn udp_new(ripaddr: Option<&Ipv6Addr>, rport: u16) -> *mut UdpConn {
     unsafe {
         // Find a free connection slot
         let mut free_conn: Option<&mut UdpConn> = None;
-        for conn in &mut UDP_CONNS {
+        let conns = &mut *core::ptr::addr_of_mut!(UDP_CONNS);
+        for conn in conns {
             if !conn.is_used() {
                 free_conn = Some(conn);
                 break;
@@ -215,7 +217,8 @@ pub fn process_udp_input(buffer: &mut [u8]) -> Result<i32> {
 
     // Find matching connection
     unsafe {
-        for conn in &mut UDP_CONNS {
+        let conns = &mut *core::ptr::addr_of_mut!(UDP_CONNS);
+        for conn in conns {
             if conn.matches(dest_port.to_be(), src_port.to_be(), &ipv6_hdr.srcipaddr) {
                 // Found matching connection
                 CURRENT_UDP_CONN = conn as *mut UdpConn;
@@ -318,5 +321,5 @@ pub extern "C" fn uip_udp_conn_rust() -> *mut UdpConn {
 /// Get UDP connections array (C FFI)
 #[no_mangle]
 pub extern "C" fn uip_udp_conns_rust() -> *mut UdpConn {
-    unsafe { UDP_CONNS.as_mut_ptr() }
+    core::ptr::addr_of_mut!(UDP_CONNS).cast::<UdpConn>()
 }

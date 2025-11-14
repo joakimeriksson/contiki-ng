@@ -127,7 +127,8 @@ pub fn init() {
 /// Lookup neighbor by IPv6 address
 pub fn nbr_lookup(addr: &Ipv6Addr) -> Option<&'static mut Neighbor> {
     unsafe {
-        NEIGHBOR_CACHE
+        let cache = &mut *core::ptr::addr_of_mut!(NEIGHBOR_CACHE);
+        cache
             .iter_mut()
             .find(|nbr| nbr.is_used() && nbr.ipaddr == *addr)
     }
@@ -150,7 +151,8 @@ pub fn nbr_add(
         }
 
         // Find free slot
-        for nbr in &mut NEIGHBOR_CACHE {
+        let cache = &mut *core::ptr::addr_of_mut!(NEIGHBOR_CACHE);
+        for nbr in cache {
             if !nbr.is_used() {
                 nbr.ipaddr = *addr;
                 nbr.lladdr = *lladdr;
@@ -167,7 +169,8 @@ pub fn nbr_add(
 /// Remove neighbor
 pub fn nbr_rm(addr: &Ipv6Addr) -> Result<()> {
     unsafe {
-        for nbr in &mut NEIGHBOR_CACHE {
+        let cache = &mut *core::ptr::addr_of_mut!(NEIGHBOR_CACHE);
+        for nbr in cache {
             if nbr.is_used() && nbr.ipaddr == *addr {
                 nbr.state = NbrState::Unused;
                 return Ok(());

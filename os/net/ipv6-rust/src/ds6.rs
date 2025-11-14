@@ -198,13 +198,14 @@ pub fn init() {
             0xff, 0x02, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0x01
         ]);
-        let _ = DS6_IF.maddr_add(&all_nodes);
+        let ds6_if = &mut *core::ptr::addr_of_mut!(DS6_IF);
+        let _ = ds6_if.maddr_add(&all_nodes);
     }
 }
 
 /// Get the global DS6 interface
 pub fn get_netif() -> &'static mut Ds6Netif {
-    unsafe { &mut DS6_IF }
+    unsafe { &mut *core::ptr::addr_of_mut!(DS6_IF) }
 }
 
 /// Select source address for a given destination

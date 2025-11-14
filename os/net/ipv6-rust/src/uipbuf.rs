@@ -39,7 +39,7 @@ pub fn init() {
 
 /// Get mutable reference to the packet buffer
 pub fn get_buffer() -> &'static mut [u8] {
-    unsafe { &mut UIP_ALIGNED_BUF.u8 }
+    unsafe { &mut (*core::ptr::addr_of_mut!(UIP_ALIGNED_BUF)).u8 }
 }
 
 /// Get the current packet length
@@ -66,19 +66,19 @@ pub fn clear() {
 /// Get pointer to uip_buf (for C code)
 #[no_mangle]
 pub extern "C" fn uip_buf_ptr() -> *mut u8 {
-    unsafe { UIP_ALIGNED_BUF.u8.as_mut_ptr() }
+    unsafe { core::ptr::addr_of_mut!((*core::ptr::addr_of_mut!(UIP_ALIGNED_BUF)).u8).cast::<u8>() }
 }
 
 /// Get pointer to uip_len (for C code)
 #[no_mangle]
 pub extern "C" fn uip_len_ptr() -> *mut u16 {
-    unsafe { &mut UIP_LEN as *mut u16 }
+    core::ptr::addr_of_mut!(UIP_LEN)
 }
 
 /// Access uip_aligned_buf from C
 #[no_mangle]
 pub extern "C" fn uip_aligned_buf_ptr() -> *mut UipBufT {
-    unsafe { &mut UIP_ALIGNED_BUF as *mut UipBufT }
+    core::ptr::addr_of_mut!(UIP_ALIGNED_BUF)
 }
 
 /// Set uip_len from C
