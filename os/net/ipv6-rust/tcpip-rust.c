@@ -439,23 +439,32 @@ PROCESS_THREAD(tcpip_process, ev, data)
 
       if(event_type && *event_type == PACKET_INPUT) {
         printf("[RUST-TCPIP] --> PACKET_INPUT branch entered!\n");
+        printf("[RUST-TCPIP] Step 1: uip_len=%d\n", uip_len);
         LOG_INFO("[C] PACKET_INPUT: uip_len=%d\n", uip_len);
 
         /* Sync C buffer length to Rust */
+        printf("[RUST-TCPIP] Step 2: Calling uip_set_len(%d)\n", uip_len);
         uip_set_len(uip_len);
+        printf("[RUST-TCPIP] Step 3: uip_set_len returned\n");
 
         /* Copy C buffer to Rust buffer */
+        printf("[RUST-TCPIP] Step 4: Getting rust_buf pointer\n");
         uint8_t *rust_buf = uip_buf_ptr();
+        printf("[RUST-TCPIP] Step 5: rust_buf=%p, copying %d bytes\n", rust_buf, uip_len);
         memcpy(rust_buf, uip_aligned_buf.u8, uip_len);
+        printf("[RUST-TCPIP] Step 6: memcpy completed\n");
 
         LOG_INFO("[C] Synced buffer to Rust, calling tcpip_rust_packet_input()\n");
 
         /* Process packet with Rust */
+        printf("[RUST-TCPIP] Step 7: Calling tcpip_rust_packet_input()\n");
         tcpip_rust_packet_input();
+        printf("[RUST-TCPIP] Step 8: tcpip_rust_packet_input() returned\n");
 
         /* Sync Rust buffer back to C (for replies) */
         uint16_t *rust_len_ptr = uip_len_ptr();
         uip_len = *rust_len_ptr;
+        printf("[RUST-TCPIP] Step 9: After Rust processing, uip_len=%d\n", uip_len);
         LOG_INFO("[C] After Rust processing: uip_len=%d\n", uip_len);
       } else if(event_type && *event_type == TCP_POLL) {
         printf("[RUST-TCPIP] --> TCP_POLL branch (not implemented)\n");
