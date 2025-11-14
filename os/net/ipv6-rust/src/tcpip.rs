@@ -303,14 +303,30 @@ pub extern "C" fn tcpip_rust_ipv6_output() -> i32 {
 
     // Look up neighbor for link-layer address
     let mut lladdr = [0u8; 8];
+
+    unsafe {
+        rust_debug_log(b"[OUTPUT] Calling nd6::lookup_neighbor()\n\0".as_ptr());
+    }
+
     let nbr_result = nd6::lookup_neighbor(&nexthop, &mut lladdr);
 
+    unsafe {
+        rust_debug_log_int(b"[OUTPUT] nd6::lookup_neighbor() returned:\0".as_ptr(), nbr_result);
+    }
+
     if nbr_result < 0 {
+        unsafe {
+            rust_debug_log(b"[OUTPUT] ERROR: Neighbor not in cache, dropping packet\n\0".as_ptr());
+        }
         log_info!("[OUTPUT] Neighbor not in cache - need NS");
         // In real implementation, would trigger NS and queue packet
         // For now, just drop
         uipbuf::clear();
         return -1;
+    }
+
+    unsafe {
+        rust_debug_log(b"[OUTPUT] Neighbor found in cache\n\0".as_ptr());
     }
 
     // Send packet to link layer
