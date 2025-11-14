@@ -49,10 +49,12 @@ extern uint16_t uip_get_len(void);
 /* Debug logging helpers for Rust */
 void rust_debug_log(const char *msg) {
   printf("%s", msg);
+  fflush(stdout);
 }
 
 void rust_debug_log_int(const char *msg, int val) {
   printf("%s %d\n", msg, val);
+  fflush(stdout);
 }
 
 /* Process events */
@@ -467,8 +469,13 @@ PROCESS_THREAD(tcpip_process, ev, data)
 
         /* Process packet with Rust */
         printf("[RUST-TCPIP] Step 7: Calling tcpip_rust_packet_input()\n");
-        tcpip_rust_packet_input();
-        printf("[RUST-TCPIP] Step 8: tcpip_rust_packet_input() returned\n");
+        /* Test debug helpers from C */
+        rust_debug_log("[C-TEST] Testing rust_debug_log from C\n");
+        rust_debug_log_int("[C-TEST] Testing rust_debug_log_int from C:", 12345);
+        fflush(stdout);  /* Force output before calling Rust */
+        int rust_result = tcpip_rust_packet_input();
+        fflush(stdout);  /* Force output after Rust returns */
+        printf("[RUST-TCPIP] Step 8: tcpip_rust_packet_input() returned %d\n", rust_result);
 
         /* Sync Rust buffer back to C (for replies) */
         uint16_t *rust_len_ptr = uip_len_ptr();
