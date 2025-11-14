@@ -43,6 +43,8 @@ extern struct uip_udp_conn *uip_udp_conns_rust(void);
 extern uint8_t *uip_buf_ptr(void);
 extern uint16_t *uip_len_ptr(void);
 extern void *uip_aligned_buf_ptr(void);
+extern void uip_set_len(uint16_t len);
+extern uint16_t uip_get_len(void);
 
 /* Process events */
 process_event_t tcpip_event;
@@ -57,12 +59,15 @@ static struct etimer periodic;
 extern struct etimer uip_reass_timer;
 #endif
 
-/* Event types */
+/* Event types (used as data with tcpip_event) */
 enum {
   TCP_POLL,
   UDP_POLL,
   PACKET_INPUT
 };
+
+/* Track event type for current event */
+static int current_event_type;
 
 /*---------------------------------------------------------------------------*/
 /* Helper functions for Rust to call C code */
@@ -208,9 +213,15 @@ tcpip_output(const uip_lladdr_t *a)
 void
 tcpip_input(void)
 {
+  LOG_INFO("[C] tcpip_input() called, uip_len=%d\n", uip_len);
+
   if(netstack_process_ip_callback(NETSTACK_IP_INPUT, NULL) ==
      NETSTACK_IP_PROCESS) {
-    process_post_synch(&tcpip_process, PACKET_INPUT, NULL);
+    LOG_INFO("[C] Posting PACKET_INPUT event to tcpip_process\n");
+    current_event_type = PACKET_INPUT;
+    process_post_synch(&tcpip_process, tcpip_event, (void *)&current_event_type);
+  } else {
+    LOG_INFO("[C] netstack_process_ip_callback returned != NETSTACK_IP_PROCESS\n");
   }
   uipbuf_clear();
 }
@@ -369,6 +380,8 @@ PROCESS_THREAD(tcpip_process, ev, data)
   while(1) {
     PROCESS_YIELD();
 
+    LOG_DBG("[C] Event received: %d (tcpip_event=%d)\n", ev, tcpip_event);
+
     /* Dispatch to Rust event handler */
     if(ev == PROCESS_EVENT_TIMER) {
       /* Handle periodic timer */
@@ -397,15 +410,39 @@ PROCESS_THREAD(tcpip_process, ev, data)
         tcpip_ipv6_output();
       }
 #endif
-    } else if(ev == PACKET_INPUT) {
-      /* Process packet with Rust */
-      tcpip_rust_packet_input();
-    } else if(ev == TCP_POLL) {
-      /* TCP polling - will be handled when TCP is ported to Rust */
-      LOG_DBG("TCP poll event (not implemented)\n");
-    } else if(ev == UDP_POLL) {
-      /* UDP polling - will be handled when UDP is ported to Rust */
-      LOG_DBG("UDP poll event (not implemented)\n");
+    } else if(ev == tcpip_event) {
+      /* Check event type from data pointer */
+      int *event_type = (int *)data;
+      LOG_INFO("[C] tcpip_event received, type=%d\n", event_type ? *event_type : -1);
+
+      if(event_type && *event_type == PACKET_INPUT) {
+        LOG_INFO("[C] PACKET_INPUT: uip_len=%d\n", uip_len);
+
+        /* Sync C buffer length to Rust */
+        uip_set_len(uip_len);
+
+        /* Copy C buffer to Rust buffer */
+        uint8_t *rust_buf = uip_buf_ptr();
+        memcpy(rust_buf, uip_aligned_buf.u8, uip_len);
+
+        LOG_INFO("[C] Synced buffer to Rust, calling tcpip_rust_packet_input()\n");
+
+        /* Process packet with Rust */
+        tcpip_rust_packet_input();
+
+        /* Sync Rust buffer back to C (for replies) */
+        uint16_t *rust_len_ptr = uip_len_ptr();
+        uip_len = *rust_len_ptr;
+        LOG_INFO("[C] After Rust processing: uip_len=%d\n", uip_len);
+      } else if(event_type && *event_type == TCP_POLL) {
+        /* TCP polling - will be handled when TCP is ported to Rust */
+        LOG_DBG("[C] TCP poll event (not implemented)\n");
+      } else if(event_type && *event_type == UDP_POLL) {
+        /* UDP polling - will be handled when UDP is ported to Rust */
+        LOG_DBG("[C] UDP poll event (not implemented)\n");
+      }
+    } else {
+      LOG_DBG("[C] Other event: %d\n", ev);
     }
   }
 
