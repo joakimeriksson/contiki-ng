@@ -389,9 +389,19 @@ pub extern "C" fn tcpip_rust_ipv6_output() -> i32 {
 #[no_mangle]
 pub extern "C" fn tcpip_rust_output(lladdr: *const u8) -> i32 {
     unsafe {
-        if netstack_process_ip_callback(NETSTACK_IP_OUTPUT, lladdr) == NETSTACK_IP_PROCESS {
+        rust_debug_log(b"[OUTPUT] tcpip_rust_output() entered\n\0".as_ptr());
+        rust_debug_log(b"[OUTPUT] Calling netstack_process_ip_callback(NETSTACK_IP_OUTPUT)\n\0".as_ptr());
+
+        let callback_result = netstack_process_ip_callback(NETSTACK_IP_OUTPUT, lladdr);
+
+        rust_debug_log_int(b"[OUTPUT] netstack_process_ip_callback returned:\0".as_ptr(), callback_result as i32);
+        rust_debug_log_int(b"[OUTPUT] NETSTACK_IP_PROCESS constant:\0".as_ptr(), NETSTACK_IP_PROCESS as i32);
+
+        if callback_result == NETSTACK_IP_PROCESS {
+            rust_debug_log(b"[OUTPUT] Callback says PROCESS, calling tcpip_rust_network_output()\n\0".as_ptr());
             tcpip_rust_network_output(lladdr)
         } else {
+            rust_debug_log(b"[OUTPUT] Callback says DROP/IGNORE, clearing buffer and returning 0\n\0".as_ptr());
             // Ignore and drop
             uipbuf::clear();
             0
