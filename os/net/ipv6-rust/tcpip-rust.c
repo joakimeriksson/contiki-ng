@@ -213,14 +213,18 @@ tcpip_output(const uip_lladdr_t *a)
 void
 tcpip_input(void)
 {
+  /* Force output to see if function is called */
+  printf("[RUST-TCPIP] tcpip_input() CALLED! uip_len=%d\n", uip_len);
   LOG_INFO("[C] tcpip_input() called, uip_len=%d\n", uip_len);
 
   if(netstack_process_ip_callback(NETSTACK_IP_INPUT, NULL) ==
      NETSTACK_IP_PROCESS) {
+    printf("[RUST-TCPIP] netstack callback OK, posting event\n");
     LOG_INFO("[C] Posting PACKET_INPUT event to tcpip_process\n");
     current_event_type = PACKET_INPUT;
     process_post_synch(&tcpip_process, tcpip_event, (void *)&current_event_type);
   } else {
+    printf("[RUST-TCPIP] netstack callback FAILED!\n");
     LOG_INFO("[C] netstack_process_ip_callback returned != NETSTACK_IP_PROCESS\n");
   }
   uipbuf_clear();
@@ -356,6 +360,7 @@ PROCESS_THREAD(tcpip_process, ev, data)
 {
   PROCESS_BEGIN();
 
+  printf("[RUST-TCPIP] ===== Starting Rust TCP/IP stack =====\n");
   LOG_INFO("Starting Rust TCP/IP stack\n");
 
   /* Initialize buffer pointers */
@@ -363,6 +368,7 @@ PROCESS_THREAD(tcpip_process, ev, data)
 
   /* Initialize Rust stack */
   tcpip_rust_init();
+  printf("[RUST-TCPIP] Rust stack initialized, entering event loop\n");
 
   /* Allocate events */
   tcpip_event = process_alloc_event();
@@ -377,9 +383,12 @@ PROCESS_THREAD(tcpip_process, ev, data)
   NETSTACK_ROUTING.init();
 
   /* Main event loop */
+  printf("[RUST-TCPIP] Event loop started, tcpip_event=%d\n", tcpip_event);
+
   while(1) {
     PROCESS_YIELD();
 
+    printf("[RUST-TCPIP] Event: %d (tcpip_event=%d)\n", ev, tcpip_event);
     LOG_DBG("[C] Event received: %d (tcpip_event=%d)\n", ev, tcpip_event);
 
     /* Dispatch to Rust event handler */
