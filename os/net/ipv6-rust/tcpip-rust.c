@@ -383,12 +383,16 @@ PROCESS_THREAD(tcpip_process, ev, data)
   NETSTACK_ROUTING.init();
 
   /* Main event loop */
-  printf("[RUST-TCPIP] Event loop started, tcpip_event=%d\n", tcpip_event);
+  printf("[RUST-TCPIP] Event loop started, tcpip_event=%d, PROCESS_EVENT_TIMER=%d\n",
+         tcpip_event, PROCESS_EVENT_TIMER);
 
   while(1) {
     PROCESS_YIELD();
 
-    printf("[RUST-TCPIP] Event: %d (tcpip_event=%d)\n", ev, tcpip_event);
+    printf("[RUST-TCPIP] Event: %d (tcpip_event=%d, TIMER=%d)\n",
+           ev, tcpip_event, PROCESS_EVENT_TIMER);
+    printf("[RUST-TCPIP] Comparisons: ev==TIMER=%d, ev==tcpip_event=%d\n",
+           (ev == PROCESS_EVENT_TIMER), (ev == tcpip_event));
     LOG_DBG("[C] Event received: %d (tcpip_event=%d)\n", ev, tcpip_event);
 
     /* Dispatch to Rust event handler */
