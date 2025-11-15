@@ -30,6 +30,9 @@ lto = true
 name = "blink"
 
 [[example]]
+name = "blink_simple"
+
+[[example]]
 name = "periodic_timer"
 
 [[example]]

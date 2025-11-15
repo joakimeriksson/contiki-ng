@@ -25,5 +25,8 @@ clock_time_t clock_time(void) {
 }
 
 void clock_delay_usec(uint16_t us) {
-    usleep(us);
+    struct timespec ts;
+    ts.tv_sec = 0;
+    ts.tv_nsec = us * 1000L;
+    nanosleep(&ts, NULL);
 }

@@ -502,6 +502,10 @@ impl Future for Yield {
             Poll::Ready(())
         } else {
             self.yielded = true;
+            // Request poll so we get called again
+            if let Some(pid) = ProcessManager::current() {
+                ProcessManager::poll(pid);
+            }
             Poll::Pending
         }
     }
