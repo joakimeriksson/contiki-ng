@@ -139,9 +139,261 @@ panic = "abort"          # No unwinding on panic
 strip = true             # Strip symbols
 ```
 
-## Integration
+## Integration with Contiki-NG Netstack
 
-The Rust stack is integrated via the `tcpip-rust.c` bridge layer:
+### Overview
+
+The Rust IPv6 stack integrates with Contiki-NG through the **tcpip-rust.c** FFI bridge, which exposes Rust functions to C and provides Rust with access to C subsystems. The integration uses a **hybrid architecture** where Rust handles packet processing while C manages platform-specific I/O, routing tables, and address management.
+
+### Packet Input Flow
+
+```
+1. Physical Interface (tun6)
+   ↓
+2. tun6_net_input() [arch/cpu/native/net/tun6-net.c]
+   - Reads packet from /dev/tun0
+   - Stores in C uip_buf
+   - Sets C uip_len
+   ↓
+3. tcpip_input() [os/net/ipv6/tcpip.c]
+   - Entry point to TCP/IP stack
+   ↓
+4. tcpip_rust_packet_input() [os/net/ipv6-rust/tcpip-rust.c] ← FFI BOUNDARY
+   - Copies C buffer to Rust buffer (uip_buf → UIP_ALIGNED_BUF)
+   - Copies C length to Rust length (uip_len → UIP_LEN)
+   ↓
+5. tcpip_rust_input() [Rust: src/tcpip.rs]
+   - Rust packet processing begins
+   ↓
+6. ipv6::process_input() [Rust: src/ipv6.rs]
+   - Parse IPv6 header
+   - Validate addresses
+   - Check destination (is it for us?)
+   - Dispatch to protocol handler
+   ↓
+7. icmpv6::process_input() [Rust: src/icmpv6.rs]
+   - Verify ICMPv6 checksum
+   - Parse ICMP type (Echo Request, NS, NA, etc.)
+   - Generate Echo Reply in place
+   - Swap src/dst addresses
+   - Recalculate checksum
+   ↓
+8. tcpip_rust_ipv6_output() [Rust: src/tcpip.rs]
+   - Called if there's a reply to send
+```
+
+### Packet Output Flow
+
+```
+1. tcpip_rust_ipv6_output() [Rust: src/tcpip.rs]
+   - Checks if destination is our own address (loopback)
+   - Determines if destination is on-link or needs routing
+   ↓
+2. tcpip_rust_get_nexthop() [C: tcpip-rust.c] ← FFI CALL TO C
+   - Calls C uip_ds6_route_lookup()
+   - Returns next-hop IPv6 address
+   ↓
+3. nd6::lookup_neighbor() [Rust: src/nd6.rs]
+   - Look up link-layer address for next hop
+   - If not found: autofill from IPv6 IID (native platform)
+   - Cache neighbor for future use
+   ↓
+4. tcpip_rust_output() [Rust: src/tcpip.rs]
+   ↓
+5. sync_rust_len_to_c() [C: tcpip-rust.c] ← FFI BOUNDARY
+   - CRITICAL: Copy Rust buffer to C buffer
+   - memcpy(uip_buf, UIP_ALIGNED_BUF, UIP_LEN)
+   - uip_len = UIP_LEN
+   ↓
+6. netstack_process_ip_callback() [C: os/net/netstack.c]
+   - Iterate through IP processor list
+   - Each processor can return PROCESS or DROP
+   - Returns NETSTACK_IP_PROCESS if all processors allow
+   ↓
+7. tcpip_rust_network_output() [C: tcpip-rust.c]
+   - NETSTACK_NETWORK.output() (e.g., tun6_net_driver)
+   ↓
+8. tun6_net_output() [arch/cpu/native/net/tun6-net.c]
+   - write(tunfd, uip_buf, uip_len)
+   - Packet sent to /dev/tun0
+   ↓
+9. Physical Interface (tun6)
+```
+
+### FFI Boundary Functions
+
+#### C Functions Called from Rust
+
+Defined in `tcpip-rust.c` and declared in Rust's `extern "C"` blocks:
+
+```c
+// Buffer access (Rust needs pointers to C buffers)
+uint8_t* uip_buf_ptr(void);
+uint16_t* uip_len_ptr(void);
+
+// Buffer synchronization
+void sync_rust_len_to_c(void);  // Copy Rust buffer → C buffer
+
+// Routing integration
+int tcpip_rust_get_nexthop(const uip_ipaddr_t *dest, uip_ipaddr_t *out);
+int tcpip_rust_is_addr_onlink(const uip_ipaddr_t *addr);
+int tcpip_rust_is_my_addr(const uip_ipaddr_t *addr);
+
+// Neighbor discovery integration (C DS6)
+int tcpip_rust_nbr_lookup(const uip_ipaddr_t *ipaddr, uip_lladdr_t *lladdr);
+int tcpip_rust_nbr_add(const uip_ipaddr_t *ipaddr, const uip_lladdr_t *lladdr,
+                       int is_router, int state);
+
+// Netstack callbacks
+int netstack_process_ip_callback(uint8_t type, const linkaddr_t *localdest);
+int tcpip_rust_network_output(const uint8_t *lladdr);
+
+// Debug logging
+void rust_debug_log(const char *msg);
+void rust_debug_log_int(const char *msg, int val);
+```
+
+#### Rust Functions Called from C
+
+Exported from Rust via `#[no_mangle] pub extern "C"`:
+
+```rust
+// Initialization
+pub extern "C" fn tcpip_rust_init();
+
+// Packet input entry point
+pub extern "C" fn tcpip_rust_packet_input() -> i32;
+
+// IPv6 output entry point
+pub extern "C" fn tcpip_rust_ipv6_output() -> i32;
+
+// Link-layer output
+pub extern "C" fn tcpip_rust_output(lladdr: *const u8) -> i32;
+```
+
+### C Subsystem Integration
+
+#### 1. Address Management (DS6)
+
+The Rust stack uses C's `uip-ds6` for address management:
+
+```
+Rust → tcpip_rust_is_my_addr() → [C] uip_ds6_is_my_addr() → DS6 Address Table
+```
+
+**Why**: DS6 is deeply integrated with Contiki-NG. Porting it to Rust would require significant effort without immediate security benefit.
+
+**How it works**:
+- C maintains the address table in `uip_ds6_if.addr_list[]`
+- Rust calls through FFI to check if addresses are local
+- Future work: Migrate DS6 to Rust for full memory safety
+
+#### 2. Routing Tables (uip-ds6-route)
+
+The Rust stack queries C routing tables for next-hop determination:
+
+```
+Rust → tcpip_rust_get_nexthop() → [C] uip_ds6_route_lookup() → Routing Table
+```
+
+**Why**: Routing tables are platform-specific and interact with RPL routing protocol.
+
+**How it works**:
+- C maintains routes in `uip_ds6_routing_table[]`
+- Rust queries for next hop given a destination
+- C returns either the destination (if on-link) or gateway address
+
+#### 3. Neighbor Discovery (ND6)
+
+Hybrid approach - Rust has its own neighbor cache but integrates with C for certain operations:
+
+```
+Rust nd6::lookup_neighbor() → Check Rust cache
+                            ↓ (if miss)
+                            → tcpip_rust_nbr_lookup() → [C] uip_ds6_nbr_lookup()
+```
+
+**Special behavior on native platform**:
+- **Autofill**: If neighbor not in cache, derive link-layer address from IPv6 IID
+- Formula: `lladdr[0..7] = ipv6_addr[8..15]`, flip bit 0x02 in first byte
+- Cache the autofilled neighbor for future lookups
+- This is **non-standard** but convenient for native/tun6 testing
+
+#### 4. Netstack Callback Chain
+
+Before sending packets to the network, the stack must call `netstack_process_ip_callback()`:
+
+```c
+enum netstack_ip_action
+netstack_process_ip_callback(uint8_t type, const linkaddr_t *localdest)
+{
+  enum netstack_ip_action action = NETSTACK_IP_PROCESS;
+
+  for(each processor in ip_processor_list) {
+    action = processor->process_output(localdest);
+    if(action != NETSTACK_IP_PROCESS)
+      return action;  // DROP/IGNORE
+  }
+  return NETSTACK_IP_PROCESS;  // OK to send
+}
+```
+
+**Important**:
+- Processors can be added by routing protocols (RPL), firewalls, hooks
+- Each processor can return `NETSTACK_IP_PROCESS` (0) or `NETSTACK_IP_DROP` (1)
+- If ANY processor returns DROP, the packet is discarded
+- **Critical bug we fixed**: Rust had these constants backwards!
+
+### Buffer Synchronization
+
+The dual-buffer architecture requires careful synchronization:
+
+#### Why Dual Buffers?
+
+- **C buffer**: `uip_buf[]` and `uip_len` - used by network drivers and callbacks
+- **Rust buffer**: `UIP_ALIGNED_BUF[]` and `UIP_LEN` - owned by Rust for safe processing
+
+**Why not share?**: Rust needs ownership to guarantee safety. Sharing mutable global state between C and Rust is unsafe.
+
+#### Synchronization Points
+
+**Input (C → Rust)**:
+```c
+void tcpip_rust_packet_input(void) {
+  uint16_t *rust_len = uip_len_ptr();
+  uint8_t *rust_buf = uip_buf_ptr();
+
+  // Copy C buffer to Rust
+  *rust_len = uip_len;
+  memcpy(rust_buf, uip_buf, uip_len);
+
+  // Process in Rust
+  tcpip_rust_input();
+}
+```
+
+**Output (Rust → C)**:
+```c
+void sync_rust_len_to_c(void) {
+  uint16_t *rust_len = uip_len_ptr();
+  uint8_t *rust_buf = uip_buf_ptr();
+
+  // Copy Rust buffer back to C
+  uip_len = *rust_len;
+  if(uip_len > 0 && uip_len <= sizeof(uip_aligned_buf.u8)) {
+    memcpy(uip_aligned_buf.u8, rust_buf, uip_len);
+  }
+}
+```
+
+**Critical**: `sync_rust_len_to_c()` must be called BEFORE `netstack_process_ip_callback()` because:
+- The callback checks C's `uip_len` to see if there's data to send
+- Network drivers (tun6) read from C's `uip_buf[]`
+- **Bug we fixed**: Initially only synced length, not data!
+
+### Application Integration
+
+For applications using the Rust IPv6 stack:
 
 ```c
 // In your Contiki-NG application
@@ -151,15 +403,30 @@ PROCESS_THREAD(main_process, ev, data)
 {
   PROCESS_BEGIN();
 
-  // Initialize Rust IPv6 stack (called automatically by tcpip.c)
+  // Initialize Rust IPv6 stack (called automatically by tcpip.c if enabled)
   tcpip_rust_init();
 
   // Packets are automatically routed to Rust via:
-  // tcpip_rust_packet_input() - for incoming packets
-  // tcpip_rust_ipv6_output() - for outgoing packets
+  // - tcpip_rust_packet_input() - for incoming packets
+  // - tcpip_rust_ipv6_output() - for outgoing packets
+
+  // No application changes needed for basic IPv6 operation!
 
   PROCESS_END();
 }
+```
+
+### Build System Integration
+
+The Rust library is built as a static archive and linked with the C code:
+
+```makefile
+# In Contiki-NG Makefile
+LDFLAGS += -L$(CONTIKI)/os/net/ipv6-rust/target/x86_64-unknown-linux-gnu/release
+LDFLAGS += -luip6_rust
+
+# The Rust library is built before C compilation
+$(OBJECTDIR)/tcpip-rust.o: $(CONTIKI)/os/net/ipv6-rust/target/.../libuip6_rust.a
 ```
 
 ## Testing
