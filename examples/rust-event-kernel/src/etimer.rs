@@ -34,12 +34,21 @@ impl EventTimer {
 
     /// Set timer for current process
     pub fn set<C: Clock>(&mut self, interval: ClockTime) {
+        #[cfg(feature = "std")]
+        eprintln!("[EventTimer::set] Setting timer {} for {:?} ticks", self.id, interval);
+
         self.timer.set::<C>(interval);
         self.owner = ProcessManager::current();
+
+        #[cfg(feature = "std")]
+        eprintln!("[EventTimer::set] Owner: {:?}", self.owner);
 
         ETIMER_MANAGER.with_lock(|manager| {
             manager.add_timer(self.id, self.timer);
         });
+
+        #[cfg(feature = "std")]
+        eprintln!("[EventTimer::set] Calling ETimerProcess::request_poll()");
 
         ETimerProcess::request_poll();
     }
@@ -134,7 +143,13 @@ impl ETimerManager {
 
     fn add_timer(&mut self, id: usize, timer: Timer) {
         if let Some(owner) = ProcessManager::current() {
+            #[cfg(feature = "std")]
+            eprintln!("[ETimerManager::add_timer] Adding timer {} for process {:?}, total timers: {}",
+                      id, owner, self.timers.len() + 1);
             self.timers.push(TimerEntry { id, timer, owner });
+        } else {
+            #[cfg(feature = "std")]
+            eprintln!("[ETimerManager::add_timer] ERROR: No current process!");
         }
     }
 
@@ -152,6 +167,9 @@ impl ETimerManager {
     }
 
     fn check_expired<C: Clock>(&mut self) {
+        #[cfg(feature = "std")]
+        eprintln!("[etimer] Checking {} active timers", self.timers.len());
+
         let mut expired = Vec::new();
 
         for entry in &self.timers {
@@ -160,8 +178,16 @@ impl ETimerManager {
             }
         }
 
+        #[cfg(feature = "std")]
+        if !expired.is_empty() {
+            eprintln!("[etimer] Found {} expired timers", expired.len());
+        }
+
         // Post timer events and remove expired timers
         for entry in expired {
+            #[cfg(feature = "std")]
+            eprintln!("[etimer] Posting EVENT_TIMER to process {:?} for timer {}", entry.owner, entry.id);
+
             let _ = ProcessManager::post(
                 entry.owner,
                 Event::new(EVENT_TIMER, entry.id),
@@ -209,36 +235,54 @@ pub struct ETimerProcess {
 }
 
 #[cfg(feature = "std")]
-static ETIMER_PROCESS_ID: Mutex<Option<ProcessId>> = Mutex::new(None);
+pub(crate) static ETIMER_PROCESS_ID: Mutex<Option<ProcessId>> = Mutex::new(None);
 
 impl ETimerProcess {
     /// Run the etimer process (async)
     pub async fn run<C: Clock>() {
         use crate::process::wait_event_type;
 
+        #[cfg(feature = "std")]
+        eprintln!("[etimer] Etimer process started, waiting for events...");
+
         loop {
             // Wait for poll event
+            #[cfg(feature = "std")]
+            eprintln!("[etimer] Waiting for POLL event...");
+
             wait_event_type(EVENT_POLL).await;
+
+            #[cfg(feature = "std")]
+            eprintln!("[etimer] Got POLL event, checking timers...");
 
             // Check all timers
             ETIMER_MANAGER.with_lock(|manager| {
                 manager.check_expired::<C>();
             });
+
+            // Don't request another poll - we'll be polled again by the main loop
+            // or when a new timer is set
         }
     }
 
     /// Initialize etimer system
     #[cfg(feature = "std")]
     pub fn init<C: Clock + 'static>() {
+        eprintln!("[etimer] Initializing etimer system...");
         let pid = ProcessManager::start("etimer", Self::run::<C>()).ok();
+        eprintln!("[etimer] Started etimer process with PID: {:?}", pid);
         *ETIMER_PROCESS_ID.lock().unwrap() = pid;
     }
 
     /// Request poll of etimer process
     #[cfg(feature = "std")]
     pub fn request_poll() {
+        eprintln!("[etimer::request_poll] Called!");
         if let Some(pid) = *ETIMER_PROCESS_ID.lock().unwrap() {
+            eprintln!("[etimer::request_poll] Calling ProcessManager::poll({:?})", pid);
             ProcessManager::poll(pid);
+        } else {
+            eprintln!("[etimer::request_poll] ERROR: No etimer process ID!");
         }
     }
 

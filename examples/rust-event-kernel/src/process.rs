@@ -55,11 +55,13 @@ enum ProcessState {
 #[derive(Copy, Clone, Debug)]
 pub struct ProcessContext {
     pub current_event: Option<Event>,
+    pub current_process: Option<ProcessId>,
 }
 
 thread_local! {
     static PROCESS_CONTEXT: Cell<ProcessContext> = Cell::new(ProcessContext {
         current_event: None,
+        current_process: None,
     });
 }
 
@@ -73,6 +75,20 @@ fn set_current_event(event: Option<Event>) {
     PROCESS_CONTEXT.with(|ctx| {
         let mut c = ctx.get();
         c.current_event = event;
+        ctx.set(c);
+    });
+}
+
+/// Get current process ID
+pub fn current_process() -> Option<ProcessId> {
+    PROCESS_CONTEXT.with(|ctx| ctx.get().current_process)
+}
+
+/// Set current process in process context
+fn set_current_process(pid: Option<ProcessId>) {
+    PROCESS_CONTEXT.with(|ctx| {
+        let mut c = ctx.get();
+        c.current_process = pid;
         ctx.set(c);
     });
 }
@@ -170,7 +186,6 @@ static PROCESS_STATE: Mutex<ProcessState_> = Mutex::new(ProcessState_::new());
 struct ProcessState_ {
     process_table: [ProcessControlBlock; MAX_PROCESSES],
     event_queue: EventQueue,
-    current_process: Option<ProcessId>,
 }
 
 #[cfg(feature = "std")]
@@ -180,7 +195,6 @@ impl ProcessState_ {
         Self {
             process_table: [PCB; MAX_PROCESSES],
             event_queue: EventQueue::new(),
-            current_process: None,
         }
     }
 }
@@ -194,7 +208,6 @@ impl ProcessManager {
     pub fn init() {
         let mut state = PROCESS_STATE.lock().unwrap();
         state.event_queue = EventQueue::new();
-        state.current_process = None;
         for pcb in &mut state.process_table {
             pcb.state = ProcessState::Stopped;
             pcb.needs_poll = false;
@@ -246,48 +259,74 @@ impl ProcessManager {
     /// Post an event synchronously (execute immediately)
     #[cfg(feature = "std")]
     pub fn post_synch(pid: ProcessId, event: Event) -> Result<(), ()> {
-        let mut state = PROCESS_STATE.lock().unwrap();
-
-        if state.process_table[pid.0].state == ProcessState::Stopped {
-            return Err(());
+        // Check if process is stopped
+        {
+            let state = PROCESS_STATE.lock().unwrap();
+            if state.process_table[pid.0].state == ProcessState::Stopped {
+                return Err(());
+            }
         }
 
         // Execute immediately
-        let old_current = state.current_process;
-        state.current_process = Some(pid);
+        let old_current = current_process();
+        set_current_process(Some(pid));
+        set_current_event(Some(event));
 
-        let pcb = &mut state.process_table[pid.0];
-        pcb.state = ProcessState::Executing;
+        // Set state to Executing and poll without holding lock
+        let poll_result = {
+            let mut state = PROCESS_STATE.lock().unwrap();
+            state.process_table[pid.0].state = ProcessState::Executing;
 
-        if let Some(ref mut future) = pcb.future {
-            set_current_event(Some(event));
+            if let Some(future) = state.process_table[pid.0].future.take() {
+                drop(state);
 
-            let waker = dummy_waker();
-            let mut context = Context::from_waker(&waker);
+                let waker = process_waker(pid);
+                let mut context = Context::from_waker(&waker);
 
-            match future.as_mut().poll(&mut context) {
+                let mut future = future;
+                let result = future.as_mut().poll(&mut context);
+
+                // Put future back
+                let mut state = PROCESS_STATE.lock().unwrap();
+                state.process_table[pid.0].future = Some(future);
+                Some(result)
+            } else {
+                None
+            }
+        };
+
+        if let Some(result) = poll_result {
+            let mut state = PROCESS_STATE.lock().unwrap();
+            match result {
                 Poll::Ready(_) => {
-                    pcb.state = ProcessState::Stopped;
-                    pcb.future = None;
+                    state.process_table[pid.0].state = ProcessState::Stopped;
+                    state.process_table[pid.0].future = None;
                 }
                 Poll::Pending => {
-                    pcb.state = ProcessState::Running;
+                    state.process_table[pid.0].state = ProcessState::Running;
                 }
             }
-
-            set_current_event(None);
         }
 
-        state.current_process = old_current;
+        set_current_event(None);
+        set_current_process(old_current);
         Ok(())
     }
 
     /// Request polling of a process
     #[cfg(feature = "std")]
     pub fn poll(pid: ProcessId) {
+        eprintln!("[ProcessManager::poll] Called for {:?}", pid);
         let mut state = PROCESS_STATE.lock().unwrap();
-        if state.process_table[pid.0].state == ProcessState::Running {
+        // Allow polling for Running or Executing processes
+        if state.process_table[pid.0].state == ProcessState::Running
+            || state.process_table[pid.0].state == ProcessState::Executing
+        {
+            eprintln!("[ProcessManager::poll] Setting needs_poll=true for {:?}", pid);
             state.process_table[pid.0].needs_poll = true;
+        } else {
+            eprintln!("[ProcessManager::poll] Process {:?} not in valid state, state={:?}",
+                      pid, state.process_table[pid.0].state);
         }
     }
 
@@ -304,6 +343,7 @@ impl ProcessManager {
                 .enumerate()
                 .filter_map(|(i, pcb)| {
                     if pcb.needs_poll && pcb.state == ProcessState::Running {
+                        eprintln!("[ProcessManager] Process {:?} needs poll", ProcessId(i));
                         pcb.needs_poll = false;
                         Some(ProcessId(i))
                     } else {
@@ -313,11 +353,16 @@ impl ProcessManager {
                 .collect()
         };
 
+        if !poll_pids.is_empty() {
+            eprintln!("[ProcessManager] Processing {} poll requests", poll_pids.len());
+        }
+
         for pid in poll_pids {
+            eprintln!("[ProcessManager] Executing poll for {:?}", pid);
             Self::execute_process(pid, Event::new(EVENT_POLL, 0));
         }
 
-        // Then, process one event from queue
+        // Process one event from queue if available
         let entry = {
             let mut state = PROCESS_STATE.lock().unwrap();
             state.event_queue.pop()
@@ -325,6 +370,26 @@ impl ProcessManager {
 
         if let Some(entry) = entry {
             Self::execute_process(entry.pid, entry.event);
+        } else {
+            // If queue is empty and there are pending timers, poll etimer occasionally
+            // Use a counter to avoid polling too frequently (causes livelock)
+            #[cfg(feature = "std")]
+            {
+                use crate::etimer::ETimerProcess;
+                use std::sync::atomic::{AtomicUsize, Ordering};
+
+                static POLL_COUNTER: AtomicUsize = AtomicUsize::new(0);
+                const POLL_INTERVAL: usize = 100; // Only poll etimer every 100 empty iterations
+
+                if ETimerProcess::pending() {
+                    let counter = POLL_COUNTER.fetch_add(1, Ordering::Relaxed);
+                    if counter % POLL_INTERVAL == 0 {
+                        if let Some(pid) = *crate::etimer::ETIMER_PROCESS_ID.lock().unwrap() {
+                            Self::execute_process(pid, Event::new(EVENT_POLL, 0));
+                        }
+                    }
+                }
+            }
         }
 
         let state = PROCESS_STATE.lock().unwrap();
@@ -334,24 +399,39 @@ impl ProcessManager {
     /// Execute a process with an event
     #[cfg(feature = "std")]
     fn execute_process(pid: ProcessId, event: Event) {
-        let mut state = PROCESS_STATE.lock().unwrap();
-
-        if state.process_table[pid.0].state != ProcessState::Running {
-            return;
+        // Check if process is running and set state to Executing
+        {
+            let mut state = PROCESS_STATE.lock().unwrap();
+            if state.process_table[pid.0].state != ProcessState::Running {
+                return;
+            }
+            state.process_table[pid.0].state = ProcessState::Executing;
         }
 
-        state.process_table[pid.0].state = ProcessState::Executing;
-        state.current_process = Some(pid);
-
+        // Set current process and event in thread-local storage
+        set_current_process(Some(pid));
         set_current_event(Some(event));
 
-        let waker = dummy_waker();
+        let waker = process_waker(pid);
         let mut context = Context::from_waker(&waker);
 
+        // Poll the future WITHOUT holding the lock
+        // We need to temporarily take ownership of the future, poll it, and put it back
         let poll_result = {
+            let mut state = PROCESS_STATE.lock().unwrap();
             let pcb = &mut state.process_table[pid.0];
-            if let Some(ref mut future) = pcb.future {
-                future.as_mut().poll(&mut context)
+            if let Some(future) = pcb.future.take() {
+                // Drop the lock before polling
+                drop(state);
+
+                // Poll the future
+                let mut future = future;
+                let result = future.as_mut().poll(&mut context);
+
+                // Re-acquire lock and put future back
+                let mut state = PROCESS_STATE.lock().unwrap();
+                state.process_table[pid.0].future = Some(future);
+                result
             } else {
                 return;
             }
@@ -359,6 +439,7 @@ impl ProcessManager {
 
         match poll_result {
             Poll::Ready(_) => {
+                let mut state = PROCESS_STATE.lock().unwrap();
                 state.process_table[pid.0].state = ProcessState::Stopped;
                 state.process_table[pid.0].future = None;
 
@@ -368,22 +449,23 @@ impl ProcessManager {
                     let _ = Self::post(ProcessId(i), Event::new(EVENT_EXITED, pid.0));
                 }
                 set_current_event(None);
+                set_current_process(None);
                 return;
             }
             Poll::Pending => {
+                let mut state = PROCESS_STATE.lock().unwrap();
                 state.process_table[pid.0].state = ProcessState::Running;
             }
         }
 
         set_current_event(None);
-        state.current_process = None;
+        set_current_process(None);
     }
 
     /// Get current process ID
     #[cfg(feature = "std")]
     pub fn current() -> Option<ProcessId> {
-        let state = PROCESS_STATE.lock().unwrap();
-        state.current_process
+        current_process()
     }
 
     /// Check if process is running
@@ -411,17 +493,28 @@ impl ProcessManager {
     }
 }
 
-/// Dummy waker for embedded context
-fn dummy_waker() -> Waker {
-    const VTABLE: RawWakerVTable = RawWakerVTable::new(
-        |_| RAW_WAKER, // clone
-        |_| {},        // wake
-        |_| {},        // wake_by_ref
-        |_| {},        // drop
-    );
-    const RAW_WAKER: RawWaker = RawWaker::new(core::ptr::null(), &VTABLE);
+/// Create a waker for a process
+fn process_waker(pid: ProcessId) -> Waker {
+    unsafe fn clone(data: *const ()) -> RawWaker {
+        RawWaker::new(data, &VTABLE)
+    }
 
-    unsafe { Waker::from_raw(RAW_WAKER) }
+    unsafe fn wake(data: *const ()) {
+        let pid = ProcessId(data as usize);
+        ProcessManager::poll(pid);
+    }
+
+    unsafe fn wake_by_ref(data: *const ()) {
+        let pid = ProcessId(data as usize);
+        ProcessManager::poll(pid);
+    }
+
+    unsafe fn drop(_data: *const ()) {}
+
+    const VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop);
+
+    let raw_waker = RawWaker::new(pid.0 as *const (), &VTABLE);
+    unsafe { Waker::from_raw(raw_waker) }
 }
 
 /// Future for waiting on any event
