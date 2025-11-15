@@ -1,0 +1,39 @@
+[package]
+name = "contiki-ng-rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["Contiki-NG Contributors"]
+description = "Rust implementation of Contiki-NG event kernel"
+license = "BSD-3-Clause"
+
+[dependencies]
+
+[dev-dependencies]
+criterion = "0.5"
+
+[features]
+default = ["std", "platform-native"]
+std = []
+platform-native = ["std"]
+
+[profile.release]
+opt-level = "z"      # Optimize for size
+lto = true           # Enable Link-Time Optimization
+codegen-units = 1    # Better optimization
+strip = true         # Strip symbols
+
+[profile.bench]
+opt-level = 3
+lto = true
+
+[[example]]
+name = "blink"
+
+[[example]]
+name = "periodic_timer"
+
+[[example]]
+name = "process_comm"
+
+[[example]]
+name = "benchmark"
