@@ -370,26 +370,6 @@ impl ProcessManager {
 
         if let Some(entry) = entry {
             Self::execute_process(entry.pid, entry.event);
-        } else {
-            // If queue is empty and there are pending timers, poll etimer occasionally
-            // Use a counter to avoid polling too frequently (causes livelock)
-            #[cfg(feature = "std")]
-            {
-                use crate::etimer::ETimerProcess;
-                use std::sync::atomic::{AtomicUsize, Ordering};
-
-                static POLL_COUNTER: AtomicUsize = AtomicUsize::new(0);
-                const POLL_INTERVAL: usize = 100; // Only poll etimer every 100 empty iterations
-
-                if ETimerProcess::pending() {
-                    let counter = POLL_COUNTER.fetch_add(1, Ordering::Relaxed);
-                    if counter % POLL_INTERVAL == 0 {
-                        if let Some(pid) = *crate::etimer::ETIMER_PROCESS_ID.lock().unwrap() {
-                            Self::execute_process(pid, Event::new(EVENT_POLL, 0));
-                        }
-                    }
-                }
-            }
         }
 
         let state = PROCESS_STATE.lock().unwrap();

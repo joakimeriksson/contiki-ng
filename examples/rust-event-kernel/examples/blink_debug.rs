@@ -42,6 +42,11 @@ fn main() {
         let pending = ProcessManager::run();
         iterations += 1;
 
+        // Periodically poll etimer to check for expirations
+        if iterations % 10 == 0 && ETimerProcess::pending() {
+            ProcessManager::poll(ProcessId(0)); // Poll etimer process (PID 0)
+        }
+
         if iterations % 100 == 0 {
             println!("[main] Iteration {}, pending events: {}", iterations, pending);
         }
