@@ -334,35 +334,8 @@ impl ProcessManager {
     /// Returns number of pending events
     #[cfg(feature = "std")]
     pub fn run() -> usize {
-        // First, handle poll requests
-        let poll_pids: Vec<ProcessId> = {
-            let mut state = PROCESS_STATE.lock().unwrap();
-            state
-                .process_table
-                .iter_mut()
-                .enumerate()
-                .filter_map(|(i, pcb)| {
-                    if pcb.needs_poll && pcb.state == ProcessState::Running {
-                        eprintln!("[ProcessManager] Process {:?} needs poll", ProcessId(i));
-                        pcb.needs_poll = false;
-                        Some(ProcessId(i))
-                    } else {
-                        None
-                    }
-                })
-                .collect()
-        };
-
-        if !poll_pids.is_empty() {
-            eprintln!("[ProcessManager] Processing {} poll requests", poll_pids.len());
-        }
-
-        for pid in poll_pids {
-            eprintln!("[ProcessManager] Executing poll for {:?}", pid);
-            Self::execute_process(pid, Event::new(EVENT_POLL, 0));
-        }
-
-        // Process one event from queue if available
+        // First, process one event from queue if available
+        // Queue events have priority over poll requests to avoid starvation
         let entry = {
             let mut state = PROCESS_STATE.lock().unwrap();
             state.event_queue.pop()
@@ -370,6 +343,34 @@ impl ProcessManager {
 
         if let Some(entry) = entry {
             Self::execute_process(entry.pid, entry.event);
+        } else {
+            // Only process poll requests if queue is empty
+            let poll_pids: Vec<ProcessId> = {
+                let mut state = PROCESS_STATE.lock().unwrap();
+                state
+                    .process_table
+                    .iter_mut()
+                    .enumerate()
+                    .filter_map(|(i, pcb)| {
+                        if pcb.needs_poll && pcb.state == ProcessState::Running {
+                            eprintln!("[ProcessManager] Process {:?} needs poll", ProcessId(i));
+                            pcb.needs_poll = false;
+                            Some(ProcessId(i))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            };
+
+            if !poll_pids.is_empty() {
+                eprintln!("[ProcessManager] Processing {} poll requests", poll_pids.len());
+            }
+
+            for pid in poll_pids {
+                eprintln!("[ProcessManager] Executing poll for {:?}", pid);
+                Self::execute_process(pid, Event::new(EVENT_POLL, 0));
+            }
         }
 
         let state = PROCESS_STATE.lock().unwrap();

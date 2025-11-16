@@ -43,7 +43,8 @@ fn main() {
         iterations += 1;
 
         // Periodically poll etimer to check for expirations
-        if iterations % 10 == 0 && ETimerProcess::pending() {
+        // Poll every 250 iterations (≈125ms with 500μs sleep)
+        if iterations % 250 == 0 && ETimerProcess::pending() {
             ProcessManager::poll(ProcessId(0)); // Poll etimer process (PID 0)
         }
 

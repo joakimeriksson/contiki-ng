@@ -13,14 +13,18 @@ async fn blink_process() {
     println!("[blink] Initialized");
 
     let mut led_state = false;
+    let mut timer = Timer::new();
 
     loop {
         // Toggle LED state
         led_state = !led_state;
         println!("[blink] LED: {}", if led_state { "ON" } else { "OFF" });
 
-        // Wait 500ms
-        delay::<SystemClock>(SystemClock::from_millis(500)).await;
+        // Set a timer and busy-wait (with yielding to other processes)
+        timer.set::<SystemClock>(SystemClock::from_millis(500));
+        while !timer.expired::<SystemClock>() {
+            yield_now().await;  // Yield to other processes
+        }
     }
 }
 
@@ -30,7 +34,6 @@ fn main() {
     // Initialize system
     SystemClock::init();
     ProcessManager::init();
-    ETimerProcess::init::<SystemClock>();
 
     // Start blink process
     ProcessManager::start("blink", blink_process()).unwrap();
@@ -43,7 +46,7 @@ fn main() {
 
     while !SystemClock::now().has_passed(start + duration) {
         ProcessManager::run();
-        std::thread::sleep(std::time::Duration::from_millis(1));
+        std::thread::sleep(std::time::Duration::from_micros(100));
     }
 
     println!("\n=== Example complete ===");
