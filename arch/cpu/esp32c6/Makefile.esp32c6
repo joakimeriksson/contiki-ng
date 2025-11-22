@@ -13,6 +13,9 @@ CONTIKI_CPU_SOURCEFILES += uart-arch.c
 CONTIKI_CPU_SOURCEFILES += gpio-hal-arch.c
 CONTIKI_CPU_SOURCEFILES += esp32c6-radio.c
 
+### Startup assembly
+CONTIKI_CPU_SOURCEFILES += startup.S
+
 ### Compiler definitions
 CFLAGS += -DCPU_CONF_PATH=\"esp32c6-conf.h\"
 CFLAGS += -DCPU_DEF_PATH=\"esp32c6-def.h\"
