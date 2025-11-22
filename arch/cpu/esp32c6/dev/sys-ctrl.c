@@ -93,7 +93,7 @@ watchdog_reboot(void)
 /*---------------------------------------------------------------------------*/
 /* Newlib syscall stubs for ESP-IDF toolchain */
 /*---------------------------------------------------------------------------*/
-int
+_ssize_t
 _read_r(struct _reent *r, int fd, void *buf, size_t len)
 {
   (void)r;
@@ -103,7 +103,7 @@ _read_r(struct _reent *r, int fd, void *buf, size_t len)
   return -1;
 }
 /*---------------------------------------------------------------------------*/
-int
+_ssize_t
 _write_r(struct _reent *r, int fd, const void *buf, size_t len)
 {
   (void)r;
@@ -113,8 +113,8 @@ _write_r(struct _reent *r, int fd, const void *buf, size_t len)
   return len;
 }
 /*---------------------------------------------------------------------------*/
-int
-_lseek_r(struct _reent *r, int fd, int offset, int whence)
+_off_t
+_lseek_r(struct _reent *r, int fd, _off_t offset, int whence)
 {
   (void)r;
   (void)fd;
