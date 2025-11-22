@@ -69,3 +69,23 @@ esp32c6-info:
 	@echo "  Flash: 8 MB (external)"
 	@echo "  Radio: IEEE 802.15.4"
 	@echo "  Toolchain: $(PREFIX)"
+
+### Upload support using esptool.py
+ESPTOOL ?= esptool.py
+PORT ?= /dev/tty.usbserial*
+BAUD ?= 460800
+
+# Convert ELF to binary
+%.bin: %.$(TARGET)
+	$(OBJCOPY) -O binary $< $@
+
+# Upload target
+%.upload: %.$(TARGET)
+	$(OBJCOPY) -O binary $< $*.bin
+	$(ESPTOOL) --chip esp32c6 --port $(PORT) --baud $(BAUD) \
+		write_flash 0x0 $*.bin
+
+# Login to serial console
+.PHONY: login
+login:
+	python -m serial.tools.miniterm $(PORT) 115200
