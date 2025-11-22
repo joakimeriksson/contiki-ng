@@ -15,6 +15,9 @@
 #include <errno.h>
 #include <reent.h>
 
+/* ROM function for character output */
+extern int ets_putc(int c);
+
 /*---------------------------------------------------------------------------*/
 static volatile clock_time_t current_clock = 0;
 static volatile unsigned long current_seconds = 0;
@@ -108,8 +111,10 @@ _write_r(struct _reent *r, int fd, const void *buf, size_t len)
 {
   (void)r;
   (void)fd;
-  (void)buf;
-  /* In real implementation, write to UART */
+  const char *p = (const char *)buf;
+  for(size_t i = 0; i < len; i++) {
+    ets_putc(p[i]);
+  }
   return len;
 }
 /*---------------------------------------------------------------------------*/

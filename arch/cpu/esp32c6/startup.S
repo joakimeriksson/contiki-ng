@@ -1,6 +1,5 @@
 /*
- * ESP32-C6 RISC-V Startup Code for Contiki-NG
- * Simplified version - initializes stack and jumps to main
+ * ESP32-C6 RISC-V Startup Code for Direct ROM Boot
  */
 
   .section .text.entry
@@ -20,19 +19,6 @@ clear_bss:
   addi t0, t0, 4
   j clear_bss
 bss_done:
-
-  /* Copy data section from flash to RAM */
-  la t0, _sdata
-  la t1, _edata
-  la t2, _etext  /* Load address in flash */
-copy_data:
-  bge t0, t1, data_done
-  lw t3, 0(t2)
-  sw t3, 0(t0)
-  addi t0, t0, 4
-  addi t2, t2, 4
-  j copy_data
-data_done:
 
   /* Jump to main */
   call main

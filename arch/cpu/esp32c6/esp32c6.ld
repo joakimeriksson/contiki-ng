@@ -1,46 +1,60 @@
-/* ESP32-C6 Linker Script for Contiki-NG */
-/* Simplified version - for full implementation use ESP-IDF linker scripts */
+/*
+ * ESP32-C6 Linker Script for Direct ROM Boot
+ * Code runs from IRAM, loaded directly by ROM bootloader
+ */
 
 MEMORY
 {
-  /* Internal SRAM */
-  iram (rwx) : ORIGIN = 0x40800000, LENGTH = 0x50000  /* 320 KB IRAM */
-  dram (rw)  : ORIGIN = 0x40850000, LENGTH = 0x14000  /* 80 KB DRAM */
-
-  /* External Flash (code) */
-  flash (rx) : ORIGIN = 0x42000000, LENGTH = 0x800000 /* 8 MB */
+    /* Internal SRAM - all code and data here */
+    iram (rwx) : ORIGIN = 0x40800000, LENGTH = 0x60000  /* 384 KB */
 }
 
 ENTRY(_start)
 
 SECTIONS
 {
-  .text : {
-    _stext = .;
-    *(.text.entry)
-    *(.text .text.*)
-    *(.rodata .rodata.*)
-    _etext = .;
-  } > flash
+    /* Code section */
+    .text : ALIGN(4)
+    {
+        _stext = .;
+        *(.text.entry)
+        *(.text .text.*)
+        . = ALIGN(4);
+        _etext = .;
+    } > iram
 
-  .data : {
-    _sdata = .;
-    *(.data .data.*)
-    _edata = .;
-  } > dram AT > flash
+    /* Read-only data */
+    .rodata : ALIGN(4)
+    {
+        *(.rodata .rodata.*)
+        . = ALIGN(4);
+    } > iram
 
-  .bss (NOLOAD) : {
-    _sbss = .;
-    *(.bss .bss.*)
-    *(COMMON)
-    _ebss = .;
-  } > dram
+    /* Initialized data */
+    .data : ALIGN(4)
+    {
+        _sdata = .;
+        *(.data .data.*)
+        . = ALIGN(4);
+        _edata = .;
+    } > iram
 
-  _heap_start = .;
-  _heap_end = ORIGIN(dram) + LENGTH(dram);
+    /* Uninitialized data */
+    .bss (NOLOAD) : ALIGN(4)
+    {
+        _sbss = .;
+        *(.bss .bss.*)
+        *(COMMON)
+        . = ALIGN(4);
+        _ebss = .;
+    } > iram
 
-  /* Stack symbols */
-  _stack_top = ORIGIN(iram) + LENGTH(iram);
-  _stack = ORIGIN(iram) + LENGTH(iram) - 0x4000;  /* 16KB stack */
-  _stack_origin = ORIGIN(iram) + LENGTH(iram);
+    /* Heap and stack */
+    _heap_start = .;
+    _heap_end = ORIGIN(iram) + LENGTH(iram) - 0x4000;
+
+    /* Stack at end of memory */
+    _stack_top = ORIGIN(iram) + LENGTH(iram);
+    _stack = _stack_top - 0x4000;  /* 16KB stack */
+    _stack_origin = _stack_top;
 }

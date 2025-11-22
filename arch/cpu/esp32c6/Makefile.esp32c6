@@ -9,6 +9,9 @@ CONTIKI_CPU_DIRS = . dev
 ### CPU source files (from dev directory)
 CPU_SOURCES = clock-arch.c rtimer-arch.c uart-arch.c gpio-hal-arch.c esp32c6-radio.c sys-ctrl.c
 
+### Startup code
+CONTIKI_CPU_SOURCEFILES += startup.S
+
 ### Add to CONTIKI_SOURCEFILES
 CONTIKI_SOURCEFILES += $(CPU_SOURCES)
 
@@ -75,11 +78,16 @@ ESPTOOL ?= esptool.py
 PORT ?= /dev/tty.usbserial*
 BAUD ?= 460800
 
-# Upload target - convert to ESP32 format and flash at app offset
+# Upload target - load directly to RAM and run (no flash, instant testing)
 %.upload: $(BUILD_DIR_BOARD)/%.$(TARGET)
+	$(ESPTOOL) --chip esp32c6 --port $(PORT) --baud $(BAUD) \
+		load_ram $<
+
+# Flash target - write to flash for persistent storage
+%.flash: $(BUILD_DIR_BOARD)/%.$(TARGET)
 	$(ESPTOOL) --chip esp32c6 elf2image --flash_mode dio --flash_size 8MB -o $(BUILD_DIR_BOARD)/$*.bin $<
 	$(ESPTOOL) --chip esp32c6 --port $(PORT) --baud $(BAUD) \
-		write_flash 0x10000 $(BUILD_DIR_BOARD)/$*.bin
+		write_flash 0x0 $(BUILD_DIR_BOARD)/$*.bin
 
 # Login to serial console
 .PHONY: login
