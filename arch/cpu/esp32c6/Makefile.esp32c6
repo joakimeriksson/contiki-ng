@@ -20,8 +20,6 @@ CFLAGS += -DCPU_DEF_PATH=\"esp32c6-def.h\"
 # ESP32-C6 uses RV32IMAC (32-bit RISC-V with integer, multiply, atomic, compressed)
 CFLAGS += -march=rv32imac
 CFLAGS += -mabi=ilp32
-CFLAGS += --specs=picolibc.specs
-LDFLAGS += --specs=picolibc.specs
 LDFLAGS += -march=rv32imac -mabi=ilp32
 
 ### Optimization flags
@@ -45,9 +43,8 @@ LDSCRIPT ?= $(CONTIKI_CPU)/esp32c6.ld
 
 
 ### Toolchain
-# ESP32-C6 uses RISC-V GCC toolchain
-# Can use riscv32-esp-elf, riscv32-unknown-elf, or riscv64-unknown-elf
-PREFIX ?= riscv64-unknown-elf
+# ESP32-C6 uses RISC-V GCC toolchain from ESP-IDF
+PREFIX ?= riscv32-esp-elf
 
 ifdef PREFIX
   CC       = $(PREFIX)-gcc
