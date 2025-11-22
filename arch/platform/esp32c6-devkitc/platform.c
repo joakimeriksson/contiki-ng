@@ -58,10 +58,6 @@
 #define LOG_LEVEL LOG_LEVEL_MAIN
 
 /*---------------------------------------------------------------------------*/
-/* Unique ID for this node (from MAC address or random) */
-static uint16_t node_id = 0x1234;
-
-/*---------------------------------------------------------------------------*/
 void
 platform_init_stage_one(void)
 {
@@ -107,10 +103,6 @@ platform_init_stage_two(void)
 
   /* Set input handler for UART */
   uart_arch_set_input(serial_line_input_byte);
-
-  /* Set node ID */
-  node_id_burn(node_id);
-  node_id_restore();
 
   LOG_INFO("Node ID: 0x%04x\n", node_id);
 

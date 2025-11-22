@@ -39,7 +39,20 @@
 
 /*---------------------------------------------------------------------------*/
 /* LED pin definitions */
+#define LED_RGB_PORT 0  /* ESP32-C6 uses single port */
 #define LED_RGB_PIN  8  /* WS2812 RGB LED on GPIO8 */
+
+/*---------------------------------------------------------------------------*/
+/* LED array for Contiki-NG LED HAL */
+const leds_t leds_arch_leds[] = {
+  {
+    .pin = LED_RGB_PIN,
+#if GPIO_HAL_PORT_PIN_NUMBERING
+    .port = LED_RGB_PORT,
+#endif
+    .negative_logic = false
+  },
+};
 
 /*---------------------------------------------------------------------------*/
 /* LED state */
@@ -54,8 +67,8 @@ leds_arch_init(void)
    * In a complete implementation, this would use RMT or SPI peripheral
    */
 
-  gpio_hal_arch_pin_cfg_set(LED_RGB_PIN, GPIO_HAL_PIN_CFG_OUTPUT);
-  gpio_hal_arch_write(LED_RGB_PIN, 0);
+  gpio_hal_arch_pin_set_output(LED_RGB_PORT, LED_RGB_PIN);
+  gpio_hal_arch_write_pin(LED_RGB_PORT, LED_RGB_PIN, 0);
 
   led_state = 0;
 }
@@ -83,13 +96,13 @@ leds_arch_set(unsigned char leds)
 
   if(leds == 0) {
     /* All LEDs off - send zeros to WS2812 */
-    gpio_hal_arch_write(LED_RGB_PIN, 0);
+    gpio_hal_arch_write_pin(LED_RGB_PORT, LED_RGB_PIN, 0);
   } else {
     /* At least one LED on - toggle to show activity */
     /* In real implementation, would send proper RGB data */
     static uint8_t toggle = 0;
     toggle = !toggle;
-    gpio_hal_arch_write(LED_RGB_PIN, toggle);
+    gpio_hal_arch_write_pin(LED_RGB_PORT, LED_RGB_PIN, toggle);
   }
 }
 /*---------------------------------------------------------------------------*/
@@ -119,9 +132,9 @@ ws2812_send_pixel(uint8_t r, uint8_t g, uint8_t b)
 
   /* For now, just use GPIO to show some activity */
   if(r || g || b) {
-    gpio_hal_arch_write(LED_RGB_PIN, 1);
+    gpio_hal_arch_write_pin(LED_RGB_PORT, LED_RGB_PIN, 1);
   } else {
-    gpio_hal_arch_write(LED_RGB_PIN, 0);
+    gpio_hal_arch_write_pin(LED_RGB_PORT, LED_RGB_PIN, 0);
   }
 }
 /*---------------------------------------------------------------------------*/

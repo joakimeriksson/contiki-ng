@@ -38,6 +38,7 @@
 #include "dev/leds.h"
 #include "sys/etimer.h"
 #include "dev/radio.h"
+#include "net/netstack.h"
 
 #include <stdio.h>
 

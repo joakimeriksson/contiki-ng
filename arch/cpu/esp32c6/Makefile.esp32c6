@@ -6,15 +6,11 @@ SMALL ?= 0
 ### CPU-specific directories
 CONTIKI_CPU_DIRS = . dev
 
-### CPU-specific source files
-CONTIKI_CPU_SOURCEFILES += clock-arch.c
-CONTIKI_CPU_SOURCEFILES += rtimer-arch.c
-CONTIKI_CPU_SOURCEFILES += uart-arch.c
-CONTIKI_CPU_SOURCEFILES += gpio-hal-arch.c
-CONTIKI_CPU_SOURCEFILES += esp32c6-radio.c
+### CPU source files (from dev directory)
+CPU_SOURCES = clock-arch.c rtimer-arch.c uart-arch.c gpio-hal-arch.c esp32c6-radio.c sys-ctrl.c
 
-### Startup assembly
-CONTIKI_CPU_SOURCEFILES += startup.S
+### Add to CONTIKI_SOURCEFILES
+CONTIKI_SOURCEFILES += $(CPU_SOURCES)
 
 ### Compiler definitions
 CFLAGS += -DCPU_CONF_PATH=\"esp32c6-conf.h\"
@@ -24,6 +20,9 @@ CFLAGS += -DCPU_DEF_PATH=\"esp32c6-def.h\"
 # ESP32-C6 uses RV32IMAC (32-bit RISC-V with integer, multiply, atomic, compressed)
 CFLAGS += -march=rv32imac
 CFLAGS += -mabi=ilp32
+CFLAGS += --specs=picolibc.specs
+LDFLAGS += --specs=picolibc.specs
+LDFLAGS += -march=rv32imac -mabi=ilp32
 
 ### Optimization flags
 ifeq ($(SMALL),1)
@@ -44,13 +43,11 @@ LDFLAGS += -Wl,--gc-sections
 ### Linker script (simplified - would need actual linker script for ESP32-C6)
 LDSCRIPT ?= $(CONTIKI_CPU)/esp32c6.ld
 
-### Include directories
-CONTIKI_CPU_DIRS += $(CONTIKI_CPU)/dev
 
 ### Toolchain
 # ESP32-C6 uses RISC-V GCC toolchain
-# Expected to be riscv32-esp-elf-gcc or riscv32-unknown-elf-gcc
-PREFIX ?= riscv32-esp-elf
+# Can use riscv32-esp-elf, riscv32-unknown-elf, or riscv64-unknown-elf
+PREFIX ?= riscv64-unknown-elf
 
 ifdef PREFIX
   CC       = $(PREFIX)-gcc

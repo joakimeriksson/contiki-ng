@@ -39,5 +39,8 @@ SECTIONS
   _heap_start = .;
   _heap_end = ORIGIN(dram) + LENGTH(dram);
 
+  /* Stack symbols */
   _stack_top = ORIGIN(iram) + LENGTH(iram);
+  _stack = ORIGIN(iram) + LENGTH(iram) - 0x4000;  /* 16KB stack */
+  _stack_origin = ORIGIN(iram) + LENGTH(iram);
 }

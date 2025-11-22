@@ -36,46 +36,32 @@
 #ifndef GPIO_HAL_ARCH_H_
 #define GPIO_HAL_ARCH_H_
 
-#include "contiki.h"
 #include <stdint.h>
 
 /*---------------------------------------------------------------------------*/
-/* GPIO pin definitions */
-#define GPIO_HAL_PIN_COUNT 30  /* ESP32-C6 has 30 GPIO pins */
+/* GPIO configuration for Contiki-NG GPIO HAL */
+
+/* ESP32-C6 has only one "port" (port 0) with 30 GPIOs */
+#define GPIO_HAL_ARCH_PORT_COUNT 1
 
 /*---------------------------------------------------------------------------*/
-typedef uint8_t gpio_hal_arch_pin_t;
+/* Function declarations for port-based GPIO HAL */
 
-/*---------------------------------------------------------------------------*/
-/* GPIO configuration */
-#define gpio_hal_arch_interrupt_enable(p)   gpio_hal_arch_pin_interrupt_enable(p)
-#define gpio_hal_arch_interrupt_disable(p)  gpio_hal_arch_pin_interrupt_disable(p)
-
-#define gpio_hal_arch_pin_set_input(p)      gpio_hal_arch_pin_cfg_set(p, GPIO_HAL_PIN_CFG_INPUT)
-#define gpio_hal_arch_pin_set_output(p)     gpio_hal_arch_pin_cfg_set(p, GPIO_HAL_PIN_CFG_OUTPUT)
-
-#define gpio_hal_arch_set_pin(p)            gpio_hal_arch_write_pin(p, 1)
-#define gpio_hal_arch_clear_pin(p)          gpio_hal_arch_write_pin(p, 0)
-#define gpio_hal_arch_toggle_pin(p)         gpio_hal_arch_toggle(p)
-#define gpio_hal_arch_read_pin(p)           gpio_hal_arch_read(p)
-#define gpio_hal_arch_write_pin(p, v)       gpio_hal_arch_write(p, v)
-
-/*---------------------------------------------------------------------------*/
-/* Pin configuration flags */
-#define GPIO_HAL_PIN_CFG_INPUT          0x01
-#define GPIO_HAL_PIN_CFG_OUTPUT         0x02
-#define GPIO_HAL_PIN_CFG_PULL_UP        0x04
-#define GPIO_HAL_PIN_CFG_PULL_DOWN      0x08
-#define GPIO_HAL_PIN_CFG_OPEN_DRAIN     0x10
-
-/*---------------------------------------------------------------------------*/
 void gpio_hal_arch_init(void);
-void gpio_hal_arch_pin_cfg_set(gpio_hal_arch_pin_t pin, uint32_t cfg);
-void gpio_hal_arch_pin_interrupt_enable(gpio_hal_arch_pin_t pin);
-void gpio_hal_arch_pin_interrupt_disable(gpio_hal_arch_pin_t pin);
-void gpio_hal_arch_write(gpio_hal_arch_pin_t pin, uint8_t value);
-uint8_t gpio_hal_arch_read(gpio_hal_arch_pin_t pin);
-void gpio_hal_arch_toggle(gpio_hal_arch_pin_t pin);
+
+void gpio_hal_arch_port_pin_set_output(uint8_t port, uint8_t pin);
+void gpio_hal_arch_port_pin_set_input(uint8_t port, uint8_t pin);
+void gpio_hal_arch_port_set_pins(uint8_t port, uint32_t pins);
+void gpio_hal_arch_port_clear_pins(uint8_t port, uint32_t pins);
+uint32_t gpio_hal_arch_port_read_pins(uint8_t port, uint32_t pins);
+void gpio_hal_arch_port_toggle_pins(uint8_t port, uint32_t pins);
+void gpio_hal_arch_port_write_pins(uint8_t port, uint32_t pins, uint32_t value);
+
+void gpio_hal_arch_port_pin_cfg_set(uint8_t port, uint8_t pin, uint32_t cfg);
+uint32_t gpio_hal_arch_port_pin_cfg_get(uint8_t port, uint8_t pin);
+
+void gpio_hal_arch_port_interrupt_enable(uint8_t port, uint8_t pin);
+void gpio_hal_arch_port_interrupt_disable(uint8_t port, uint8_t pin);
 
 /*---------------------------------------------------------------------------*/
 #endif /* GPIO_HAL_ARCH_H_ */

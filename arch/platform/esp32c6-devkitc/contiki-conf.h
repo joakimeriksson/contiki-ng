@@ -114,6 +114,10 @@
 #define MMEM_CONF_SIZE 4096
 
 /*---------------------------------------------------------------------------*/
+/* Disable stack checking (linker script symbols not yet configured) */
+#define STACK_CHECK_CONF_ENABLED 0
+
+/*---------------------------------------------------------------------------*/
 /* Printf configuration */
 #define DBG_CONF_USB 0
 #define DBG_CONF_UART 1
@@ -126,7 +130,6 @@
 
 /*---------------------------------------------------------------------------*/
 /* Platform-specific types */
-typedef uint32_t clock_time_t;
 typedef uint32_t uip_stats_t;
 
 /*---------------------------------------------------------------------------*/
