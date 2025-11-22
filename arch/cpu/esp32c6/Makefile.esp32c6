@@ -40,6 +40,8 @@ CFLAGS += -Wno-unused-function
 ### Target-specific flags
 CFLAGS += -ffunction-sections -fdata-sections
 LDFLAGS += -Wl,--gc-sections
+LDFLAGS += -nostartfiles
+LDFLAGS += -T $(LDSCRIPT)
 
 ### Linker script (simplified - would need actual linker script for ESP32-C6)
 LDSCRIPT ?= $(CONTIKI_CPU)/esp32c6.ld
