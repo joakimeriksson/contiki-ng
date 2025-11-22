@@ -9,8 +9,8 @@ CONTIKI_CPU_DIRS = . dev
 ### CPU source files (from dev directory)
 CPU_SOURCES = clock-arch.c rtimer-arch.c uart-arch.c gpio-hal-arch.c esp32c6-radio.c sys-ctrl.c
 
-### Startup code
-CONTIKI_CPU_SOURCEFILES += startup.S
+### Startup code - add directly to source files
+CONTIKI_SOURCEFILES += startup.S
 
 ### Add to CONTIKI_SOURCEFILES
 CONTIKI_SOURCEFILES += $(CPU_SOURCES)
