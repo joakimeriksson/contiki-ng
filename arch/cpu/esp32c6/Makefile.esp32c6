@@ -75,15 +75,11 @@ ESPTOOL ?= esptool.py
 PORT ?= /dev/tty.usbserial*
 BAUD ?= 460800
 
-# Convert ELF to binary
-%.bin: %.$(TARGET)
-	$(OBJCOPY) -O binary $< $@
-
 # Upload target
-%.upload: %.$(TARGET)
-	$(OBJCOPY) -O binary $< $*.bin
+%.upload: $(BUILD_DIR_BOARD)/%.$(TARGET)
+	$(OBJCOPY) -O binary $< $(BUILD_DIR_BOARD)/$*.bin
 	$(ESPTOOL) --chip esp32c6 --port $(PORT) --baud $(BAUD) \
-		write_flash 0x0 $*.bin
+		write_flash 0x0 $(BUILD_DIR_BOARD)/$*.bin
 
 # Login to serial console
 .PHONY: login
