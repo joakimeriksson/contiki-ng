@@ -11,6 +11,9 @@
 #include "contiki.h"
 #include "sys/clock.h"
 #include "dev/watchdog.h"
+#include <sys/stat.h>
+#include <errno.h>
+#include <reent.h>
 
 /*---------------------------------------------------------------------------*/
 static volatile clock_time_t current_clock = 0;
@@ -86,5 +89,100 @@ watchdog_reboot(void)
   while(1) {
     /* Hang - in real implementation would trigger reset */
   }
+}
+/*---------------------------------------------------------------------------*/
+/* Newlib syscall stubs for ESP-IDF toolchain */
+/*---------------------------------------------------------------------------*/
+int
+_read_r(struct _reent *r, int fd, void *buf, size_t len)
+{
+  (void)r;
+  (void)fd;
+  (void)buf;
+  (void)len;
+  return -1;
+}
+/*---------------------------------------------------------------------------*/
+int
+_write_r(struct _reent *r, int fd, const void *buf, size_t len)
+{
+  (void)r;
+  (void)fd;
+  (void)buf;
+  /* In real implementation, write to UART */
+  return len;
+}
+/*---------------------------------------------------------------------------*/
+int
+_lseek_r(struct _reent *r, int fd, int offset, int whence)
+{
+  (void)r;
+  (void)fd;
+  (void)offset;
+  (void)whence;
+  return -1;
+}
+/*---------------------------------------------------------------------------*/
+int
+_close_r(struct _reent *r, int fd)
+{
+  (void)r;
+  (void)fd;
+  return -1;
+}
+/*---------------------------------------------------------------------------*/
+int
+_fstat_r(struct _reent *r, int fd, struct stat *st)
+{
+  (void)r;
+  (void)fd;
+  st->st_mode = S_IFCHR;
+  return 0;
+}
+/*---------------------------------------------------------------------------*/
+int
+_isatty_r(struct _reent *r, int fd)
+{
+  (void)r;
+  (void)fd;
+  return 1;
+}
+/*---------------------------------------------------------------------------*/
+void *
+_sbrk_r(struct _reent *r, ptrdiff_t incr)
+{
+  (void)r;
+  (void)incr;
+  return (void *)-1;
+}
+/*---------------------------------------------------------------------------*/
+int
+_getpid_r(struct _reent *r)
+{
+  (void)r;
+  return 1;
+}
+/*---------------------------------------------------------------------------*/
+int
+_kill_r(struct _reent *r, int pid, int sig)
+{
+  (void)r;
+  (void)pid;
+  (void)sig;
+  return -1;
+}
+/*---------------------------------------------------------------------------*/
+struct _reent *
+__getreent(void)
+{
+  return _GLOBAL_REENT;
+}
+/*---------------------------------------------------------------------------*/
+int
+pthread_setcancelstate(int state, int *oldstate)
+{
+  (void)state;
+  (void)oldstate;
+  return 0;
 }
 /*---------------------------------------------------------------------------*/
