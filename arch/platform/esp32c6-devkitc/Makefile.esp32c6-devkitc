@@ -6,7 +6,7 @@ endif
 
 ### Board and platform configuration
 BOARD ?= esp32c6-devkitc
-TARGET = esp32c6-devkitc
+BOARDS = esp32c6-devkitc
 
 ### Unless the example dictates otherwise, build with code size optimizations switched off
 SMALL ?= 0
