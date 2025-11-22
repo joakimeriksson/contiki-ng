@@ -11,7 +11,6 @@
 #include "contiki.h"
 #include "sys/clock.h"
 #include "dev/watchdog.h"
-#include <stdio.h>
 
 /*---------------------------------------------------------------------------*/
 static volatile clock_time_t current_clock = 0;
@@ -88,26 +87,4 @@ watchdog_reboot(void)
     /* Hang - in real implementation would trigger reset */
   }
 }
-/*---------------------------------------------------------------------------*/
-/* Picolibc stdio support */
-/*---------------------------------------------------------------------------*/
-static int
-uart_putc(char c, FILE *file)
-{
-  (void)file;
-  /* In real implementation, write to UART */
-  return c;
-}
-
-static int
-uart_getc(FILE *file)
-{
-  (void)file;
-  return EOF;
-}
-
-static FILE __stdio = FDEV_SETUP_STREAM(uart_putc, uart_getc, NULL, _FDEV_SETUP_RW);
-FILE *const stdin = &__stdio;
-FILE *const stdout = &__stdio;
-FILE *const stderr = &__stdio;
 /*---------------------------------------------------------------------------*/
