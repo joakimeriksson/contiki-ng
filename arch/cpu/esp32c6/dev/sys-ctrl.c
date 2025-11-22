@@ -15,6 +15,10 @@
 #include <errno.h>
 #include <reent.h>
 
+/* ROM functions - available when linking with ESP-IDF ROM libraries */
+extern void ets_printf(const char *fmt, ...);
+extern int ets_putc(int c);
+
 /*---------------------------------------------------------------------------*/
 static volatile clock_time_t current_clock = 0;
 static volatile unsigned long current_seconds = 0;
@@ -108,8 +112,10 @@ _write_r(struct _reent *r, int fd, const void *buf, size_t len)
 {
   (void)r;
   (void)fd;
-  (void)buf;
-  /* TODO: Add ROM uart output when ROM addresses are available */
+  const char *p = (const char *)buf;
+  for(size_t i = 0; i < len; i++) {
+    ets_putc(p[i]);
+  }
   return len;
 }
 /*---------------------------------------------------------------------------*/

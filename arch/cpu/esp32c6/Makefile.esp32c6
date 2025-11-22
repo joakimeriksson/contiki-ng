@@ -3,6 +3,16 @@
 ### Build options
 SMALL ?= 0
 
+### ESP-IDF integration
+# Requires ESP-IDF to be installed and IDF_PATH set
+ifeq ($(IDF_PATH),)
+  $(info IDF_PATH not set - using minimal standalone mode)
+  ESP_IDF_ENABLED = 0
+else
+  $(info Using ESP-IDF from $(IDF_PATH))
+  ESP_IDF_ENABLED = 1
+endif
+
 ### CPU-specific directories
 CONTIKI_CPU_DIRS = . dev
 
@@ -24,6 +34,27 @@ CFLAGS += -DCPU_DEF_PATH=\"esp32c6-def.h\"
 CFLAGS += -march=rv32imac
 CFLAGS += -mabi=ilp32
 LDFLAGS += -march=rv32imac -mabi=ilp32
+
+### ESP-IDF include paths and libraries
+ifeq ($(ESP_IDF_ENABLED),1)
+  # ESP-IDF component includes
+  CFLAGS += -I$(IDF_PATH)/components/esp_rom/include
+  CFLAGS += -I$(IDF_PATH)/components/esp_rom/include/esp32c6
+  CFLAGS += -I$(IDF_PATH)/components/soc/esp32c6/include
+  CFLAGS += -I$(IDF_PATH)/components/hal/esp32c6/include
+  CFLAGS += -I$(IDF_PATH)/components/hal/include
+  CFLAGS += -I$(IDF_PATH)/components/esp_hw_support/include
+  CFLAGS += -I$(IDF_PATH)/components/esp_common/include
+  CFLAGS += -I$(IDF_PATH)/components/esp_system/include
+  CFLAGS += -I$(IDF_PATH)/components/newlib/platform_include
+  CFLAGS += -I$(IDF_PATH)/components/riscv/include
+
+  # Link against ESP-IDF ROM library for ets_printf etc
+  LDFLAGS += -L$(IDF_PATH)/components/esp_rom/esp32c6/ld
+  LDFLAGS += -T esp32c6.rom.ld
+  LDFLAGS += -T esp32c6.rom.api.ld
+  LDFLAGS += -T esp32c6.rom.newlib.ld
+endif
 
 ### Optimization flags
 ifeq ($(SMALL),1)
@@ -85,11 +116,12 @@ BAUD ?= 460800
 	$(ESPTOOL) --chip esp32c6 --port $(PORT) --baud $(BAUD) \
 		load_ram $<
 
-# Flash target - write to flash for persistent storage
+# Flash target - write to flash at app offset (requires bootloader at 0x0)
+# First flash bootloader: idf.py -p PORT flash (from any ESP-IDF project)
 %.flash: $(BUILD_DIR_BOARD)/%.$(TARGET)
 	$(ESPTOOL) --chip esp32c6 elf2image --flash_mode dio --flash_size 8MB -o $(BUILD_DIR_BOARD)/$*.bin $<
 	$(ESPTOOL) --chip esp32c6 --port $(PORT) --baud $(BAUD) \
-		write_flash 0x0 $(BUILD_DIR_BOARD)/$*.bin
+		write_flash 0x10000 $(BUILD_DIR_BOARD)/$*.bin
 
 # Login to serial console
 .PHONY: login
