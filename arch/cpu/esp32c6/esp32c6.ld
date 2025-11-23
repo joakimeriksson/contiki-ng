@@ -1,52 +1,55 @@
 /*
- * ESP32-C6 Linker Script for Direct ROM Boot
- * Code runs from IRAM, loaded directly by ROM bootloader
+ * ESP32-C6 Linker Script for ESP-IDF bootloader compatibility
  */
 
 MEMORY
 {
-    /* Internal SRAM - all code and data here */
-    iram (rwx) : ORIGIN = 0x40800000, LENGTH = 0x60000  /* 384 KB */
+    /* Flash mapped memory for code and rodata */
+    irom (rx)  : ORIGIN = 0x42000020, LENGTH = 0x400000 - 0x20  /* 4MB flash */
+
+    /* Internal SRAM for data */
+    dram (rw)  : ORIGIN = 0x40800000, LENGTH = 0x50000  /* 320 KB */
 }
 
 ENTRY(_start)
 
 SECTIONS
 {
-    /* App descriptor - must be first for ESP-IDF bootloader */
-    .rodata_desc : ALIGN(4)
+    /* App descriptor - must be first, at fixed offset in flash */
+    .flash.appdesc : ALIGN(16)
     {
+        _rodata_start = ABSOLUTE(.);
         *(.rodata_desc)
-        . = ALIGN(4);
-    } > iram
+        . = ALIGN(16);
+    } > irom
 
-    /* Code section */
-    .text : ALIGN(4)
+    /* Code in flash */
+    .flash.text : ALIGN(4)
     {
         _stext = .;
         *(.text.entry)
         *(.text .text.*)
         . = ALIGN(4);
         _etext = .;
-    } > iram
+    } > irom
 
-    /* Read-only data */
-    .rodata : ALIGN(4)
+    /* Read-only data in flash */
+    .flash.rodata : ALIGN(4)
     {
         *(.rodata .rodata.*)
         . = ALIGN(4);
-    } > iram
+    } > irom
 
-    /* Initialized data */
+    /* Initialized data in DRAM (loaded from flash) */
     .data : ALIGN(4)
     {
         _sdata = .;
         *(.data .data.*)
         . = ALIGN(4);
         _edata = .;
-    } > iram
+    } > dram
 
-    /* Uninitialized data */
+    /* Uninitialized data in DRAM */
     .bss (NOLOAD) : ALIGN(4)
     {
         _sbss = .;
@@ -54,14 +57,14 @@ SECTIONS
         *(COMMON)
         . = ALIGN(4);
         _ebss = .;
-    } > iram
+    } > dram
 
     /* Heap and stack */
     _heap_start = .;
-    _heap_end = ORIGIN(iram) + LENGTH(iram) - 0x4000;
+    _heap_end = ORIGIN(dram) + LENGTH(dram) - 0x4000;
 
-    /* Stack at end of memory */
-    _stack_top = ORIGIN(iram) + LENGTH(iram);
-    _stack = _stack_top - 0x4000;  /* 16KB stack */
+    /* Stack at end of DRAM */
+    _stack_top = ORIGIN(dram) + LENGTH(dram);
+    _stack = _stack_top - 0x4000;
     _stack_origin = _stack_top;
 }
