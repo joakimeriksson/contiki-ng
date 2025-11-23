@@ -55,6 +55,7 @@ CFLAGS += -Wno-unused-function
 ### Target-specific flags
 CFLAGS += -ffunction-sections -fdata-sections
 LDFLAGS += -Wl,--gc-sections
+LDFLAGS += -Wl,--no-warn-rwx-segments
 LDFLAGS += -nostartfiles
 LDFLAGS += -T $(LDSCRIPT)
 
