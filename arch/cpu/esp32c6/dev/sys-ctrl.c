@@ -112,10 +112,8 @@ _write_r(struct _reent *r, int fd, const void *buf, size_t len)
 {
   (void)r;
   (void)fd;
-  const char *p = (const char *)buf;
-  for(size_t i = 0; i < len; i++) {
-    ets_putc(p[i]);
-  }
+  (void)buf;
+  /* TODO: implement UART output - ets_putc not in ROM linker scripts */
   return len;
 }
 /*---------------------------------------------------------------------------*/
