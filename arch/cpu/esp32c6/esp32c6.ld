@@ -15,36 +15,32 @@ ENTRY(_start)
 
 SECTIONS
 {
-    /* App descriptor - must be first, at fixed offset in flash */
-    .flash.appdesc : ALIGN(16)
+    /* Single flash section with app descriptor first */
+    .flash : ALIGN(4)
     {
-        _rodata_start = ABSOLUTE(.);
+        /* App descriptor must be first */
         *(.rodata_desc)
-        . = ALIGN(16);
-    } > irom
+        . = ALIGN(4);
 
-    /* Code in flash */
-    .flash.text : ALIGN(4)
-    {
+        /* Entry point */
         _stext = .;
         *(.text.entry)
         *(.text .text.*)
         . = ALIGN(4);
         _etext = .;
-    } > irom
 
-    /* Read-only data in flash */
-    .flash.rodata : ALIGN(4)
-    {
+        /* Read-only data */
         *(.rodata .rodata.*)
+        *(.srodata .srodata.*)
         . = ALIGN(4);
     } > irom
 
-    /* Initialized data in DRAM (loaded from flash) */
+    /* Initialized data in DRAM */
     .data : ALIGN(4)
     {
         _sdata = .;
         *(.data .data.*)
+        *(.sdata .sdata.*)
         . = ALIGN(4);
         _edata = .;
     } > dram
@@ -54,6 +50,7 @@ SECTIONS
     {
         _sbss = .;
         *(.bss .bss.*)
+        *(.sbss .sbss.*)
         *(COMMON)
         . = ALIGN(4);
         _ebss = .;
