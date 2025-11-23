@@ -3,15 +3,11 @@
 ### Build options
 SMALL ?= 0
 
-### ESP-IDF integration
-# Requires ESP-IDF to be installed and IDF_PATH set
+### ESP-IDF integration (required)
 ifeq ($(IDF_PATH),)
-  $(info IDF_PATH not set - using minimal standalone mode)
-  ESP_IDF_ENABLED = 0
-else
-  $(info Using ESP-IDF from $(IDF_PATH))
-  ESP_IDF_ENABLED = 1
+  $(error IDF_PATH not set. Please source ESP-IDF: . ~/esp/esp-idf/export.sh)
 endif
+$(info Using ESP-IDF from $(IDF_PATH))
 
 ### CPU-specific directories
 CONTIKI_CPU_DIRS = . dev
@@ -36,13 +32,11 @@ CFLAGS += -mabi=ilp32
 LDFLAGS += -march=rv32imac -mabi=ilp32
 
 ### ESP-IDF ROM library linking (no headers needed, we declare functions ourselves)
-ifeq ($(ESP_IDF_ENABLED),1)
-  # Link against ESP-IDF ROM library for ets_printf etc
-  LDFLAGS += -L$(IDF_PATH)/components/esp_rom/esp32c6/ld
-  LDFLAGS += -T esp32c6.rom.ld
-  LDFLAGS += -T esp32c6.rom.api.ld
-  LDFLAGS += -T esp32c6.rom.newlib.ld
-endif
+# Link against ESP-IDF ROM library for ets_printf etc
+LDFLAGS += -L$(IDF_PATH)/components/esp_rom/esp32c6/ld
+LDFLAGS += -T esp32c6.rom.ld
+LDFLAGS += -T esp32c6.rom.api.ld
+LDFLAGS += -T esp32c6.rom.newlib.ld
 
 ### Optimization flags
 ifeq ($(SMALL),1)
