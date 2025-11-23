@@ -15,6 +15,9 @@ CONTIKI_CPU_DIRS = . dev
 ### CPU source files (from dev directory)
 CPU_SOURCES = clock-arch.c rtimer-arch.c uart-arch.c gpio-hal-arch.c esp32c6-radio.c sys-ctrl.c
 
+### App descriptor for ESP-IDF bootloader compatibility
+CONTIKI_SOURCEFILES += esp32c6-app-desc.c
+
 ### Startup code - add directly to source files
 CONTIKI_SOURCEFILES += startup.S
 

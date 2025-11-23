@@ -13,6 +13,13 @@ ENTRY(_start)
 
 SECTIONS
 {
+    /* App descriptor - must be first for ESP-IDF bootloader */
+    .rodata_desc : ALIGN(4)
+    {
+        *(.rodata_desc)
+        . = ALIGN(4);
+    } > iram
+
     /* Code section */
     .text : ALIGN(4)
     {
