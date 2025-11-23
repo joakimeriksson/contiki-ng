@@ -35,20 +35,8 @@ CFLAGS += -march=rv32imac
 CFLAGS += -mabi=ilp32
 LDFLAGS += -march=rv32imac -mabi=ilp32
 
-### ESP-IDF include paths and libraries
+### ESP-IDF ROM library linking (no headers needed, we declare functions ourselves)
 ifeq ($(ESP_IDF_ENABLED),1)
-  # ESP-IDF component includes
-  CFLAGS += -I$(IDF_PATH)/components/esp_rom/include
-  CFLAGS += -I$(IDF_PATH)/components/esp_rom/include/esp32c6
-  CFLAGS += -I$(IDF_PATH)/components/soc/esp32c6/include
-  CFLAGS += -I$(IDF_PATH)/components/hal/esp32c6/include
-  CFLAGS += -I$(IDF_PATH)/components/hal/include
-  CFLAGS += -I$(IDF_PATH)/components/esp_hw_support/include
-  CFLAGS += -I$(IDF_PATH)/components/esp_common/include
-  CFLAGS += -I$(IDF_PATH)/components/esp_system/include
-  CFLAGS += -I$(IDF_PATH)/components/newlib/platform_include
-  CFLAGS += -I$(IDF_PATH)/components/riscv/include
-
   # Link against ESP-IDF ROM library for ets_printf etc
   LDFLAGS += -L$(IDF_PATH)/components/esp_rom/esp32c6/ld
   LDFLAGS += -T esp32c6.rom.ld
