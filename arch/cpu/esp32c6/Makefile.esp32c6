@@ -15,8 +15,8 @@ CONTIKI_CPU_DIRS = . dev
 ### CPU source files (from dev directory)
 CPU_SOURCES = clock-arch.c rtimer-arch.c uart-arch.c gpio-hal-arch.c esp32c6-radio.c sys-ctrl.c
 
-### App descriptor for ESP-IDF bootloader compatibility
-CONTIKI_SOURCEFILES += esp32c6-app-desc.c
+### Loader for Zephyr-style boot (runs from IRAM, sets up MMU)
+CONTIKI_SOURCEFILES += esp32c6-loader.c
 
 ### Startup code - add directly to source files
 CONTIKI_SOURCEFILES += startup.S
@@ -104,12 +104,13 @@ BAUD ?= 460800
 	$(ESPTOOL) --chip esp32c6 --port $(PORT) --baud $(BAUD) \
 		load_ram $<
 
-# Flash target - write to flash at app offset (requires bootloader at 0x0)
-# First flash bootloader: idf.py -p PORT flash (from any ESP-IDF project)
+# Flash target - Zephyr-style loader approach
+# --ram-only-header: Only include IRAM/DRAM segments, IROM/DROM are memory-mapped by loader
+# Flash at 0x0 - ROM bootloader loads directly without 2nd stage bootloader
 %.flash: $(BUILD_DIR_BOARD)/%.$(TARGET)
-	$(ESPTOOL) --chip esp32c6 elf2image --flash_mode dio --flash_size 8MB -o $(BUILD_DIR_BOARD)/$*.bin $<
-	$(ESPTOOL) --chip esp32c6 --port $(PORT) --baud $(BAUD) \
-		write_flash 0x10000 $(BUILD_DIR_BOARD)/$*.bin
+	$(ESPTOOL) --chip esp32c6 elf2image --ram-only-header --flash_mode dio --flash_freq 80m --flash_size 2MB -o $(BUILD_DIR_BOARD)/$*.bin $<
+	$(ESPTOOL) --chip esp32c6 --port $(PORT) --baud $(BAUD) erase_flash
+	$(ESPTOOL) --chip esp32c6 --port $(PORT) --baud $(BAUD) write_flash 0x0 $(BUILD_DIR_BOARD)/$*.bin
 
 # Login to serial console
 .PHONY: login
