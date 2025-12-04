@@ -192,9 +192,15 @@
 #endif
 
 /* CSMA configuration. */
+#ifndef CSMA_CONF_ACK_WAIT_TIME
 #define CSMA_CONF_ACK_WAIT_TIME                (RTIMER_SECOND / 300)
+#endif
+#ifndef CSMA_CONF_AFTER_ACK_DETECTED_WAIT_TIME
 #define CSMA_CONF_AFTER_ACK_DETECTED_WAIT_TIME (RTIMER_SECOND / 1000)
+#endif
+#ifndef CSMA_CONF_SEND_SOFT_ACK
 #define CSMA_CONF_SEND_SOFT_ACK      1
+#endif
 
 /*----- CC13xx IEEE-mode ----------------------------------------------------*/
 #elif (RF_MODE == RF_MODE_2_4_GHZ) && (SUPPORTS_IEEE_MODE)
