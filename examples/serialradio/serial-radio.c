@@ -1,0 +1,865 @@
+/*
+ * Copyright (c) 2024, RISE Research Institutes of Sweden
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+ * FOR A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE
+ * COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+ * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+ * OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/**
+ * \file
+ *         Serial Radio Control Interface - Main Implementation
+ * \author
+ *         Joakim Eriksson <joakim.eriksson@ri.se>
+ */
+
+#include "contiki.h"
+#include "serial-radio.h"
+#include "lib/cbor.h"
+#include "dev/radio.h"
+#include "dev/slip.h"
+#include "net/netstack.h"
+#include "net/packetbuf.h"
+#include "net/ipv6/uip.h"
+#include "lib/crc16.h"
+#include "sys/log.h"
+
+/* Platform-specific UART headers */
+#ifdef CONTIKI_TARGET_SIMPLELINK
+#include "uart0-arch.h"
+#endif
+
+#include <string.h>
+#include <stdio.h>
+
+#define LOG_MODULE "SerialRadio"
+#define LOG_LEVEL LOG_LEVEL_INFO
+
+/*---------------------------------------------------------------------------*/
+/* Configuration */
+/*---------------------------------------------------------------------------*/
+
+#define VERSION_STRING "serial-radio-1.0"
+
+#define TX_BUF_SIZE SERIAL_RADIO_CONF_BUF_SIZE
+#define RX_BUF_SIZE SERIAL_RADIO_CONF_BUF_SIZE
+
+/*---------------------------------------------------------------------------*/
+/* SLIP framing constants */
+/*---------------------------------------------------------------------------*/
+
+#define SLIP_END     0xC0
+#define SLIP_ESC     0xDB
+#define SLIP_ESC_END 0xDC
+#define SLIP_ESC_ESC 0xDD
+
+/*---------------------------------------------------------------------------*/
+/* Static variables */
+/*---------------------------------------------------------------------------*/
+
+static uint8_t tx_buf[TX_BUF_SIZE];
+static uint8_t current_msg_id;
+
+/* Scanning state */
+static bool scanning;
+static uint8_t scan_start_ch;
+static uint8_t scan_end_ch;
+static uint8_t scan_current_ch;
+static uint16_t scan_dwell_ms;
+static struct etimer scan_timer;
+
+/* Heartbeat state */
+static struct etimer heartbeat_timer;
+static uint32_t heartbeat_seq;
+
+/* Fast scan state */
+static bool fast_scanning;
+static uint8_t fast_scan_start_ch;
+static uint8_t fast_scan_end_ch;
+static uint32_t fast_scan_seq;
+static struct etimer fast_scan_timer;
+
+
+/*---------------------------------------------------------------------------*/
+/* Process declaration */
+/*---------------------------------------------------------------------------*/
+
+PROCESS(serial_radio_process, "Serial Radio");
+
+/*---------------------------------------------------------------------------*/
+/* Forward declarations */
+/*---------------------------------------------------------------------------*/
+
+static void send_slip_frame(const uint8_t *data, size_t len);
+static void send_error(uint8_t msg_id, uint8_t error_code);
+static void send_pong(uint8_t msg_id);
+static void send_param_response(uint8_t msg_id, uint16_t param, int32_t value);
+static void send_tx_response(uint8_t msg_id, uint8_t status);
+static void send_rssi_result(uint8_t channel, int8_t rssi);
+static void handle_command(const uint8_t *data, size_t len);
+static void slip_input_callback(void);
+
+/*---------------------------------------------------------------------------*/
+/* Serial TX helpers */
+/*---------------------------------------------------------------------------*/
+
+/* Buffer for outgoing SLIP frames (data + CRC) */
+static uint8_t slip_tx_buf[TX_BUF_SIZE + 2];
+
+static void
+send_slip_frame(const uint8_t *data, size_t len)
+{
+  /* Compute CRC16 over the data */
+  uint16_t crc = crc16_data(data, len, 0);
+
+  /* Copy data to slip_tx_buf and append CRC */
+  if(len + 2 > sizeof(slip_tx_buf)) {
+    return; /* Too large */
+  }
+  memcpy(slip_tx_buf, data, len);
+  slip_tx_buf[len] = crc & 0xFF;
+  slip_tx_buf[len + 1] = (crc >> 8) & 0xFF;
+
+  /* Use Contiki-NG's slip_write which handles SLIP framing */
+  slip_write(slip_tx_buf, len + 2);
+}
+/*---------------------------------------------------------------------------*/
+/* Response builders */
+/*---------------------------------------------------------------------------*/
+
+static void
+send_error(uint8_t msg_id, uint8_t error_code)
+{
+  cbor_writer_state_t writer;
+  cbor_init_writer(&writer, tx_buf, TX_BUF_SIZE);
+
+  cbor_open_map(&writer);
+  cbor_write_text(&writer, "t", 1);
+  cbor_write_unsigned(&writer, SRADIO_EVT_ERROR);
+  cbor_write_text(&writer, "i", 1);
+  cbor_write_unsigned(&writer, msg_id);
+  cbor_write_text(&writer, "x", 1);
+  cbor_write_unsigned(&writer, error_code);
+  cbor_close_map(&writer);
+
+  size_t len = cbor_end_writer(&writer);
+  if(len > 0) {
+    send_slip_frame(tx_buf, len);
+  }
+}
+/*---------------------------------------------------------------------------*/
+static void
+send_pong(uint8_t msg_id)
+{
+  cbor_writer_state_t writer;
+  cbor_init_writer(&writer, tx_buf, TX_BUF_SIZE);
+
+  cbor_open_map(&writer);
+  cbor_write_text(&writer, "t", 1);
+  cbor_write_unsigned(&writer, SRADIO_EVT_PONG);
+  cbor_write_text(&writer, "i", 1);
+  cbor_write_unsigned(&writer, msg_id);
+  cbor_write_text(&writer, "V", 1);
+  cbor_write_text(&writer, VERSION_STRING, strlen(VERSION_STRING));
+  cbor_close_map(&writer);
+
+  size_t len = cbor_end_writer(&writer);
+  if(len > 0) {
+    send_slip_frame(tx_buf, len);
+  }
+}
+/*---------------------------------------------------------------------------*/
+static void
+send_param_response(uint8_t msg_id, uint16_t param, int32_t value)
+{
+  cbor_writer_state_t writer;
+  cbor_init_writer(&writer, tx_buf, TX_BUF_SIZE);
+
+  cbor_open_map(&writer);
+  cbor_write_text(&writer, "t", 1);
+  cbor_write_unsigned(&writer, SRADIO_EVT_PARAM_RESPONSE);
+  cbor_write_text(&writer, "i", 1);
+  cbor_write_unsigned(&writer, msg_id);
+  cbor_write_text(&writer, "p", 1);
+  cbor_write_unsigned(&writer, param);
+  cbor_write_text(&writer, "v", 1);
+  cbor_write_signed(&writer, value);
+  cbor_close_map(&writer);
+
+  size_t len = cbor_end_writer(&writer);
+  if(len > 0) {
+    send_slip_frame(tx_buf, len);
+  }
+}
+/*---------------------------------------------------------------------------*/
+static void
+send_tx_response(uint8_t msg_id, uint8_t status)
+{
+  cbor_writer_state_t writer;
+  cbor_init_writer(&writer, tx_buf, TX_BUF_SIZE);
+
+  cbor_open_map(&writer);
+  cbor_write_text(&writer, "t", 1);
+  cbor_write_unsigned(&writer, SRADIO_EVT_TX_RESPONSE);
+  cbor_write_text(&writer, "i", 1);
+  cbor_write_unsigned(&writer, msg_id);
+  cbor_write_text(&writer, "v", 1);
+  cbor_write_unsigned(&writer, status);
+  cbor_close_map(&writer);
+
+  size_t len = cbor_end_writer(&writer);
+  if(len > 0) {
+    send_slip_frame(tx_buf, len);
+  }
+}
+/*---------------------------------------------------------------------------*/
+static void
+send_rssi_result(uint8_t channel, int8_t rssi)
+{
+  cbor_writer_state_t writer;
+  cbor_init_writer(&writer, tx_buf, TX_BUF_SIZE);
+
+  cbor_open_map(&writer);
+  cbor_write_text(&writer, "t", 1);
+  cbor_write_unsigned(&writer, SRADIO_EVT_RSSI_SCAN_RESULT);
+  cbor_write_text(&writer, "c", 1);
+  cbor_write_unsigned(&writer, channel);
+  cbor_write_text(&writer, "r", 1);
+  cbor_write_signed(&writer, rssi);
+  cbor_close_map(&writer);
+
+  size_t len = cbor_end_writer(&writer);
+  if(len > 0) {
+    send_slip_frame(tx_buf, len);
+  }
+}
+/*---------------------------------------------------------------------------*/
+static void
+send_heartbeat(void)
+{
+  cbor_writer_state_t writer;
+  cbor_init_writer(&writer, tx_buf, TX_BUF_SIZE);
+
+  cbor_open_map(&writer);
+  cbor_write_text(&writer, "t", 1);
+  cbor_write_unsigned(&writer, SRADIO_EVT_HEARTBEAT);
+  cbor_write_text(&writer, "s", 1);
+  cbor_write_unsigned(&writer, heartbeat_seq++);
+  cbor_write_text(&writer, "u", 1);
+  cbor_write_unsigned(&writer, clock_seconds());
+  cbor_close_map(&writer);
+
+  size_t len = cbor_end_writer(&writer);
+  if(len > 0) {
+    send_slip_frame(tx_buf, len);
+  }
+}
+/*---------------------------------------------------------------------------*/
+static void
+send_fast_scan_result(uint8_t start_ch, uint8_t end_ch, int8_t *rssi_values)
+{
+  cbor_writer_state_t writer;
+  cbor_init_writer(&writer, tx_buf, TX_BUF_SIZE);
+  uint8_t num_channels = end_ch - start_ch + 1;
+
+  cbor_open_map(&writer);
+  cbor_write_text(&writer, "t", 1);
+  cbor_write_unsigned(&writer, SRADIO_EVT_FAST_SCAN_RESULT);
+  cbor_write_text(&writer, "n", 1);
+  cbor_write_unsigned(&writer, fast_scan_seq++);
+  cbor_write_text(&writer, "s", 1);
+  cbor_write_unsigned(&writer, start_ch);
+  cbor_write_text(&writer, "e", 1);
+  cbor_write_unsigned(&writer, end_ch);
+  cbor_write_text(&writer, "R", 1);
+  cbor_open_array(&writer);
+  for(uint8_t i = 0; i < num_channels; i++) {
+    cbor_write_signed(&writer, rssi_values[i]);
+  }
+  cbor_close_array(&writer);
+  cbor_close_map(&writer);
+
+  size_t len = cbor_end_writer(&writer);
+  if(len > 0) {
+    send_slip_frame(tx_buf, len);
+  }
+}
+/*---------------------------------------------------------------------------*/
+/* Command handlers */
+/*---------------------------------------------------------------------------*/
+
+static void
+handle_ping(uint8_t msg_id)
+{
+  LOG_DBG("PING received\n");
+  send_pong(msg_id);
+}
+/*---------------------------------------------------------------------------*/
+static void
+handle_get_param(uint8_t msg_id, uint16_t param)
+{
+  radio_value_t value = 0;
+  radio_result_t result;
+
+  result = NETSTACK_RADIO.get_value(param, &value);
+
+  if(result == RADIO_RESULT_OK) {
+    send_param_response(msg_id, param, value);
+  } else {
+    send_error(msg_id, ERR_INVALID_PARAM);
+  }
+}
+/*---------------------------------------------------------------------------*/
+static void
+handle_set_param(uint8_t msg_id, uint16_t param, int32_t value)
+{
+  radio_result_t result;
+
+  result = NETSTACK_RADIO.set_value(param, (radio_value_t)value);
+
+  if(result == RADIO_RESULT_OK) {
+    /* Echo back the set value as confirmation */
+    send_param_response(msg_id, param, value);
+  } else {
+    send_error(msg_id, ERR_RADIO_ERROR);
+  }
+}
+/*---------------------------------------------------------------------------*/
+static void
+handle_tx_frame(uint8_t msg_id, const uint8_t *frame, size_t len, int channel)
+{
+  int result;
+  radio_value_t original_channel = 0;
+
+  /* If a specific channel is requested, save current and switch */
+  if(channel >= 0) {
+    NETSTACK_RADIO.get_value(RADIO_PARAM_CHANNEL, &original_channel);
+    NETSTACK_RADIO.set_value(RADIO_PARAM_CHANNEL, channel);
+  }
+
+  /* Turn on radio if needed */
+  NETSTACK_RADIO.on();
+
+  /* Send the frame */
+  result = NETSTACK_RADIO.send(frame, len);
+
+  /* Restore original channel if we changed it */
+  if(channel >= 0) {
+    NETSTACK_RADIO.set_value(RADIO_PARAM_CHANNEL, original_channel);
+  }
+
+  /* Send response */
+  send_tx_response(msg_id, result == RADIO_TX_OK ? 0 : 1);
+}
+/*---------------------------------------------------------------------------*/
+static void
+handle_scan_start(uint8_t msg_id, uint8_t start_ch, uint8_t end_ch, uint16_t dwell_ms)
+{
+  if(scanning) {
+    send_error(msg_id, ERR_SCAN_ACTIVE);
+    return;
+  }
+
+  scan_start_ch = start_ch;
+  scan_end_ch = end_ch;
+  scan_current_ch = start_ch;
+  scan_dwell_ms = dwell_ms;
+  scanning = true;
+
+  LOG_INFO("Starting scan: ch %u-%u, dwell %u ms\n", start_ch, end_ch, dwell_ms);
+
+  /* Set to first channel and start timer */
+  NETSTACK_RADIO.set_value(RADIO_PARAM_CHANNEL, scan_current_ch);
+  etimer_set(&scan_timer, (clock_time_t)(scan_dwell_ms * CLOCK_SECOND / 1000));
+
+  process_poll(&serial_radio_process);
+}
+/*---------------------------------------------------------------------------*/
+static void
+handle_scan_stop(uint8_t msg_id)
+{
+  scanning = false;
+  etimer_stop(&scan_timer);
+  LOG_INFO("Scan stopped\n");
+}
+/*---------------------------------------------------------------------------*/
+static void
+handle_rx_on(uint8_t msg_id)
+{
+  NETSTACK_RADIO.on();
+  send_param_response(msg_id, RADIO_PARAM_POWER_MODE, RADIO_POWER_MODE_ON);
+}
+/*---------------------------------------------------------------------------*/
+static void
+handle_rx_off(uint8_t msg_id)
+{
+  NETSTACK_RADIO.off();
+  send_param_response(msg_id, RADIO_PARAM_POWER_MODE, RADIO_POWER_MODE_OFF);
+}
+/*---------------------------------------------------------------------------*/
+static void
+handle_fast_scan_start(uint8_t msg_id, uint8_t start_ch, uint8_t end_ch)
+{
+  if(fast_scanning) {
+    send_error(msg_id, ERR_SCAN_ACTIVE);
+    return;
+  }
+
+  /* Limit to max 32 channels to fit in buffer */
+  if(end_ch < start_ch || (end_ch - start_ch + 1) > 32) {
+    send_error(msg_id, ERR_INVALID_PARAM);
+    return;
+  }
+
+  fast_scanning = true;
+  fast_scan_start_ch = start_ch;
+  fast_scan_end_ch = end_ch;
+  fast_scan_seq = 0;
+
+  LOG_INFO("Starting fast scan: ch %u-%u\n", start_ch, end_ch);
+
+  /* Start the fast scan timer - use minimal delay to run as fast as possible */
+  etimer_set(&fast_scan_timer, 1);
+  process_poll(&serial_radio_process);
+}
+/*---------------------------------------------------------------------------*/
+static void
+handle_fast_scan_stop(uint8_t msg_id)
+{
+  fast_scanning = false;
+  etimer_stop(&fast_scan_timer);
+  LOG_INFO("Fast scan stopped\n");
+}
+/*---------------------------------------------------------------------------*/
+static void
+do_fast_scan_sweep(void)
+{
+  int8_t rssi_values[32];
+  radio_value_t rssi;
+  uint8_t num_channels = fast_scan_end_ch - fast_scan_start_ch + 1;
+
+  /* Sweep through all channels and collect RSSI */
+  for(uint8_t i = 0; i < num_channels; i++) {
+    uint8_t ch = fast_scan_start_ch + i;
+    NETSTACK_RADIO.set_value(RADIO_PARAM_CHANNEL, ch);
+    NETSTACK_RADIO.get_value(RADIO_PARAM_RSSI, &rssi);
+    rssi_values[i] = (int8_t)rssi;
+  }
+
+  /* Send all results in one message */
+  send_fast_scan_result(fast_scan_start_ch, fast_scan_end_ch, rssi_values);
+
+  /* Schedule next sweep */
+  if(fast_scanning) {
+    etimer_reset(&fast_scan_timer);
+  }
+}
+/*---------------------------------------------------------------------------*/
+/* CBOR command parser */
+/*---------------------------------------------------------------------------*/
+
+/* Helper to skip a CBOR value - needed since os/lib/cbor doesn't have skip */
+static bool
+cbor_skip_value(cbor_reader_state_t *reader)
+{
+  cbor_major_type_t type = cbor_peek_next(reader);
+  uint64_t uval;
+  int64_t ival;
+  size_t len;
+
+  switch(type) {
+  case CBOR_MAJOR_TYPE_UNSIGNED:
+    return cbor_read_unsigned(reader, &uval) != CBOR_SIZE_NONE;
+  case CBOR_MAJOR_TYPE_SIGNED:
+    return cbor_read_signed(reader, &ival) != CBOR_SIZE_NONE;
+  case CBOR_MAJOR_TYPE_BYTE_STRING:
+    return cbor_read_data(reader, &len) != NULL;
+  case CBOR_MAJOR_TYPE_TEXT_STRING:
+    return cbor_read_text(reader, &len) != NULL;
+  case CBOR_MAJOR_TYPE_ARRAY:
+    len = cbor_read_array(reader);
+    if(len == SIZE_MAX) {
+      return false;
+    }
+    for(size_t i = 0; i < len; i++) {
+      if(!cbor_skip_value(reader)) {
+        return false;
+      }
+    }
+    return true;
+  case CBOR_MAJOR_TYPE_MAP:
+    len = cbor_read_map(reader);
+    if(len == SIZE_MAX) {
+      return false;
+    }
+    for(size_t i = 0; i < len; i++) {
+      if(!cbor_skip_value(reader) || !cbor_skip_value(reader)) {
+        return false;
+      }
+    }
+    return true;
+  case CBOR_MAJOR_TYPE_SIMPLE:
+    return cbor_read_simple(reader) != CBOR_SIMPLE_VALUE_NONE;
+  default:
+    return false;
+  }
+}
+
+static void
+handle_command(const uint8_t *data, size_t len)
+{
+  cbor_reader_state_t reader;
+  size_t num_pairs;
+  uint8_t msg_type = 0;
+  uint8_t msg_id = 0;
+  uint16_t param = 0;
+  int32_t value = 0;
+  int channel = -1;
+  uint8_t start_ch = 11, end_ch = 26;
+  uint16_t dwell_ms = 10;
+  const uint8_t *frame_data = NULL;
+  size_t frame_len = 0;
+  bool has_param = false;
+  bool has_value = false;
+  bool has_frame = false;
+
+  /* Verify CRC16 */
+  if(len < 2) {
+    send_error(0, ERR_CRC_FAIL);
+    return;
+  }
+
+  uint16_t received_crc = data[len - 2] | (data[len - 1] << 8);
+  uint16_t computed_crc = crc16_data(data, len - 2, 0);
+
+  if(received_crc != computed_crc) {
+    LOG_WARN("CRC mismatch: received 0x%04x, computed 0x%04x\n",
+             received_crc, computed_crc);
+    send_error(0, ERR_CRC_FAIL);
+    return;
+  }
+
+  /* Parse CBOR (excluding CRC) */
+  cbor_init_reader(&reader, data, len - 2);
+
+  num_pairs = cbor_read_map(&reader);
+  if(num_pairs == SIZE_MAX) {
+    send_error(0, ERR_CBOR_DECODE);
+    return;
+  }
+
+  /* Parse map entries */
+  for(size_t i = 0; i < num_pairs; i++) {
+    const char *key;
+    size_t key_len;
+
+    key = cbor_read_text(&reader, &key_len);
+    if(key == NULL) {
+      send_error(0, ERR_CBOR_DECODE);
+      return;
+    }
+
+    if(key_len != 1) {
+      cbor_skip_value(&reader);
+      continue;
+    }
+
+    switch(key[0]) {
+    case KEY_TYPE: {
+      uint64_t v;
+      if(cbor_read_unsigned(&reader, &v) != CBOR_SIZE_NONE) {
+        msg_type = (uint8_t)v;
+      }
+      break;
+    }
+    case KEY_ID: {
+      uint64_t v;
+      if(cbor_read_unsigned(&reader, &v) != CBOR_SIZE_NONE) {
+        msg_id = (uint8_t)v;
+      }
+      break;
+    }
+    case KEY_PARAM: {
+      uint64_t v;
+      if(cbor_read_unsigned(&reader, &v) != CBOR_SIZE_NONE) {
+        param = (uint16_t)v;
+        has_param = true;
+      }
+      break;
+    }
+    case KEY_VALUE: {
+      int64_t v;
+      if(cbor_read_signed(&reader, &v) != CBOR_SIZE_NONE) {
+        value = (int32_t)v;
+        has_value = true;
+      }
+      break;
+    }
+    case KEY_CHANNEL: {
+      int64_t v;
+      if(cbor_read_signed(&reader, &v) != CBOR_SIZE_NONE) {
+        channel = (int)v;
+      }
+      break;
+    }
+    case KEY_FRAME: {
+      frame_data = cbor_read_data(&reader, &frame_len);
+      if(frame_data != NULL) {
+        has_frame = true;
+      }
+      break;
+    }
+    case KEY_START_CH: {
+      uint64_t v;
+      if(cbor_read_unsigned(&reader, &v) != CBOR_SIZE_NONE) {
+        start_ch = (uint8_t)v;
+      }
+      break;
+    }
+    case KEY_END_CH: {
+      uint64_t v;
+      if(cbor_read_unsigned(&reader, &v) != CBOR_SIZE_NONE) {
+        end_ch = (uint8_t)v;
+      }
+      break;
+    }
+    case KEY_DWELL: {
+      uint64_t v;
+      if(cbor_read_unsigned(&reader, &v) != CBOR_SIZE_NONE) {
+        dwell_ms = (uint16_t)v;
+      }
+      break;
+    }
+    default:
+      cbor_skip_value(&reader);
+      break;
+    }
+  }
+
+  /* Dispatch command */
+  switch(msg_type) {
+  case SRADIO_CMD_PING:
+    handle_ping(msg_id);
+    break;
+
+  case SRADIO_CMD_GET_PARAM:
+    if(has_param) {
+      handle_get_param(msg_id, param);
+    } else {
+      send_error(msg_id, ERR_INVALID_CMD);
+    }
+    break;
+
+  case SRADIO_CMD_SET_PARAM:
+    if(has_param && has_value) {
+      handle_set_param(msg_id, param, value);
+    } else {
+      send_error(msg_id, ERR_INVALID_CMD);
+    }
+    break;
+
+  case SRADIO_CMD_RSSI_SCAN_START:
+    handle_scan_start(msg_id, start_ch, end_ch, dwell_ms);
+    break;
+
+  case SRADIO_CMD_RSSI_SCAN_STOP:
+    handle_scan_stop(msg_id);
+    break;
+
+  case SRADIO_CMD_TX_RAW_FRAME:
+    if(has_frame && frame_len > 0) {
+      handle_tx_frame(msg_id, frame_data, frame_len, channel);
+    } else {
+      send_error(msg_id, ERR_INVALID_CMD);
+    }
+    break;
+
+  case SRADIO_CMD_RX_ON:
+    handle_rx_on(msg_id);
+    break;
+
+  case SRADIO_CMD_RX_OFF:
+    handle_rx_off(msg_id);
+    break;
+
+  case SRADIO_CMD_FAST_SCAN_START:
+    handle_fast_scan_start(msg_id, start_ch, end_ch);
+    break;
+
+  case SRADIO_CMD_FAST_SCAN_STOP:
+    handle_fast_scan_stop(msg_id);
+    break;
+
+  default:
+    LOG_WARN("Unknown command type: %u\n", msg_type);
+    send_error(msg_id, ERR_INVALID_CMD);
+    break;
+  }
+}
+/*---------------------------------------------------------------------------*/
+/* SLIP RX handling */
+/*---------------------------------------------------------------------------*/
+
+/*
+ * This callback is called by slip_process after a complete SLIP frame
+ * has been received and decoded. The data is in uip_buf with length uip_len.
+ */
+static void
+slip_input_callback(void)
+{
+  LOG_DBG("SLIP RX: %u bytes\n", uip_len);
+  if(uip_len > 0) {
+    handle_command(uip_buf, uip_len);
+  }
+}
+/*---------------------------------------------------------------------------*/
+/* Scanning process */
+/*---------------------------------------------------------------------------*/
+
+static void
+do_scan_step(void)
+{
+  radio_value_t rssi;
+
+  /* Read RSSI on current channel */
+  NETSTACK_RADIO.get_value(RADIO_PARAM_RSSI, &rssi);
+  send_rssi_result(scan_current_ch, (int8_t)rssi);
+
+  /* Move to next channel */
+  scan_current_ch++;
+
+  if(scan_current_ch > scan_end_ch) {
+    /* Scan complete - wrap around */
+    scan_current_ch = scan_start_ch;
+  }
+
+  /* Set next channel */
+  NETSTACK_RADIO.set_value(RADIO_PARAM_CHANNEL, scan_current_ch);
+
+  /* Restart timer */
+  etimer_reset(&scan_timer);
+}
+/*---------------------------------------------------------------------------*/
+/* Process */
+/*---------------------------------------------------------------------------*/
+
+PROCESS_THREAD(serial_radio_process, ev, data)
+{
+  PROCESS_BEGIN();
+
+  LOG_INFO("Serial Radio started\n");
+  LOG_INFO("Version: %s\n", VERSION_STRING);
+
+  /* Initialize variables */
+  current_msg_id = 0;
+  scanning = false;
+  fast_scanning = false;
+  heartbeat_seq = 0;
+  fast_scan_seq = 0;
+
+  /* Initialize SLIP - this sets up UART with slip_input_byte callback */
+  slip_arch_init();
+  process_start(&slip_process, NULL);
+  slip_set_input_callback(slip_input_callback);
+
+  /* Turn on radio */
+  NETSTACK_RADIO.on();
+
+  /* Start heartbeat timer */
+  etimer_set(&heartbeat_timer, SERIAL_RADIO_CONF_HEARTBEAT_INTERVAL);
+
+  /* Send initial heartbeat */
+  send_heartbeat();
+
+  while(1) {
+    PROCESS_WAIT_EVENT();
+
+    if(ev == PROCESS_EVENT_POLL) {
+      /* Handle any pending work */
+    }
+
+    if(ev == PROCESS_EVENT_TIMER && data == &scan_timer) {
+      if(scanning) {
+        do_scan_step();
+      }
+    }
+
+    if(ev == PROCESS_EVENT_TIMER && data == &fast_scan_timer) {
+      if(fast_scanning) {
+        do_fast_scan_sweep();
+      }
+    }
+
+    if(ev == PROCESS_EVENT_TIMER && data == &heartbeat_timer) {
+      send_heartbeat();
+      etimer_reset(&heartbeat_timer);
+    }
+  }
+
+  PROCESS_END();
+}
+/*---------------------------------------------------------------------------*/
+/* Initialization */
+/*---------------------------------------------------------------------------*/
+
+void
+serial_radio_init(void)
+{
+  process_start(&serial_radio_process, NULL);
+}
+/*---------------------------------------------------------------------------*/
+/* Public API */
+/*---------------------------------------------------------------------------*/
+
+int
+serial_radio_send_frame(const uint8_t *data, uint16_t len, int channel)
+{
+  handle_tx_frame(0, data, len, channel);
+  return 0;
+}
+/*---------------------------------------------------------------------------*/
+int
+serial_radio_start_scan(uint8_t start_ch, uint8_t end_ch, uint16_t dwell_ms)
+{
+  if(scanning) {
+    return ERR_SCAN_ACTIVE;
+  }
+  handle_scan_start(0, start_ch, end_ch, dwell_ms);
+  return 0;
+}
+/*---------------------------------------------------------------------------*/
+void
+serial_radio_stop_scan(void)
+{
+  scanning = false;
+  etimer_stop(&scan_timer);
+}
+/*---------------------------------------------------------------------------*/
+bool
+serial_radio_is_scanning(void)
+{
+  return scanning;
+}
+/*---------------------------------------------------------------------------*/
