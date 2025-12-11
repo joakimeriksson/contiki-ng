@@ -11,4 +11,7 @@
 #define LOG_CONF_LEVEL_FRAMER    LOG_LEVEL_DBG
 #define LOG_CONF_LEVEL_RADIO     LOG_LEVEL_DBG
 
+/* Zolertia Firefly: Use CC1200 Sub-GHz radio */
+#define ZOUL_CONF_USE_CC1200_RADIO 1
+
 #endif /* PROJECT_CONF_H_ */

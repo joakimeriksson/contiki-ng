@@ -10,6 +10,7 @@ requires-python = ">= 3.10"
 dependencies = [
     "pyserial>=3.5",
     "cbor2>=5.4",
+    "websockets>=12.0",
 ]
 
 [project.scripts]
@@ -35,3 +36,4 @@ python = ">=3.10"
 [tool.pixi.tasks]
 cli = { cmd = "python -m tools.cli", description = "Run the serial radio CLI" }
 list-ports = { cmd = "python -c \"from tools import list_serial_ports; print('\\n'.join(list_serial_ports()))\"", description = "List available serial ports" }
+webserver = { cmd = "python -c \"from tools.webserver import SerialRadioWebServer; s = SerialRadioWebServer(); s.start(); import time; time.sleep(3600)\"", description = "Run standalone web server (for testing)" }

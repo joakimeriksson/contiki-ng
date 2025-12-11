@@ -19,6 +19,13 @@ from typing import Optional, List
 from .serial_radio import SerialRadio, SerialRadioError, RxFrame, ScanResult, Heartbeat, FastScanResult, list_serial_ports
 from .protocol import RadioParam, PARAM_NAMES
 
+# Optional web server support
+try:
+    from .webserver import SerialRadioWebServer, check_dependencies as check_web_dependencies
+    WEBSERVER_AVAILABLE = True
+except ImportError:
+    WEBSERVER_AVAILABLE = False
+
 
 class SerialRadioCLI(cmd.Cmd):
     """Interactive command-line interface for serial radio control."""
@@ -37,6 +44,7 @@ class SerialRadioCLI(cmd.Cmd):
         self._sniffing = False
         self._scanning = False
         self._scan_results: List[ScanResult] = []
+        self._webserver: Optional['SerialRadioWebServer'] = None
 
     # -------------------------------------------------------------------------
     # Connection commands
@@ -348,6 +356,12 @@ class SerialRadioCLI(cmd.Cmd):
         print(f"\n[RX] RSSI:{frame.rssi:4d} dBm  LQI:{frame.lqi:3d}  "
               f"Len:{len(frame.data):3d}  Data: {hex_data[:64]}{'...' if len(hex_data) > 64 else ''}")
 
+        # Broadcast to web clients if webserver is running
+        if self._webserver:
+            self._webserver.broadcast_rx_frame(
+                frame.data, frame.rssi, frame.lqi, frame.timestamp
+            )
+
     # -------------------------------------------------------------------------
     # Scanning commands
     # -------------------------------------------------------------------------
@@ -518,12 +532,221 @@ class SerialRadioCLI(cmd.Cmd):
 
     def _fast_scan_callback(self, result: FastScanResult):
         """Handle fast scan result from device."""
-        # Format: seq# | ch11:-80 ch12:-75 ch13:-82 ...
-        rssi_str = ' '.join(
-            f"{result.start_ch + i}:{rssi:4d}"
-            for i, rssi in enumerate(result.rssi_values)
-        )
+        # Compact printout: just sequence number and RSSI values
+        rssi_str = ' '.join(f"{r:4d}" for r in result.rssi_values)
         print(f"\r[{result.seq:5d}] {rssi_str}", end='', flush=True)
+
+        # Broadcast to web clients if webserver is running
+        if self._webserver:
+            self._webserver.broadcast_spectrum(
+                result.seq, result.start_ch, result.end_ch,
+                result.rssi_values, result.timestamp
+            )
+
+    # -------------------------------------------------------------------------
+    # Jamming commands
+    # -------------------------------------------------------------------------
+
+    def do_jam(self, arg):
+        """
+        Start/stop channel jamming by continuous transmission.
+
+        Usage:
+            jam start [channel] [interval_ms]  - Start jamming
+            jam stop                           - Stop jamming
+
+        Arguments:
+            channel:     Channel to jam (default: current channel or 26)
+            interval_ms: Interval between transmissions in ms (default: 5)
+
+        The jammer sends packets continuously on the specified channel,
+        interfering with any communication on that channel.
+
+        WARNING: Jamming radio communications may be illegal in your
+        jurisdiction. Use only for authorized testing purposes.
+
+        Example:
+            jam start 26 5   - Jam channel 26 with 5ms interval
+            jam start 15     - Jam channel 15 with default interval
+            jam stop         - Stop jamming
+        """
+        args = arg.split()
+        if not args:
+            print("Usage: jam start [channel] [interval_ms] | jam stop")
+            return
+
+        cmd = args[0].lower()
+        if cmd == 'start':
+            # Get channel
+            if len(args) > 1:
+                channel = int(args[1])
+            else:
+                channel = self.radio.get_param(RadioParam.CHANNEL) or 26
+
+            # Get interval
+            if len(args) > 2:
+                interval_ms = int(args[2])
+            else:
+                interval_ms = 5
+
+            self.radio.start_jam(channel, interval_ms)
+            print(f"Jamming channel {channel} with {interval_ms}ms interval...")
+            print("WARNING: This may be illegal. Use only for authorized testing.")
+            print("Use 'jam stop' to stop.")
+
+        elif cmd == 'stop':
+            self.radio.stop_jam()
+            print("Jamming stopped.")
+        else:
+            print("Usage: jam start [channel] [interval_ms] | jam stop")
+
+    # -------------------------------------------------------------------------
+    # Web server commands
+    # -------------------------------------------------------------------------
+
+    def do_webserver(self, arg):
+        """
+        Start/stop web-based spectrum visualization server.
+
+        Usage:
+            webserver start [http_port] [ws_port]  - Start web server
+            webserver stop                          - Stop web server
+            webserver status                        - Show server status
+
+        Default ports: HTTP=8080, WebSocket=8081
+
+        The web interface provides:
+        - Real-time 2D spectrum bar chart
+        - 3D waterfall display (drag to rotate)
+        - Radio information panel
+        - RSSI statistics
+
+        Example:
+            webserver start            - Start with default ports
+            webserver start 8000 8001  - Start with custom ports
+            webserver stop             - Stop the server
+        """
+        if not WEBSERVER_AVAILABLE:
+            print("Web server not available. Install dependencies:")
+            print("  pip install websockets")
+            return
+
+        args = arg.split()
+        if not args:
+            print("Usage: webserver start [http_port] [ws_port] | stop | status")
+            return
+
+        cmd = args[0].lower()
+
+        if cmd == 'start':
+            if self._webserver:
+                print("Web server already running")
+                return
+
+            http_port = 8080
+            ws_port = 8081
+
+            if len(args) > 1:
+                http_port = int(args[1])
+            if len(args) > 2:
+                ws_port = int(args[2])
+
+            try:
+                self._webserver = SerialRadioWebServer(http_port, ws_port)
+                self._webserver.set_command_handler(self._handle_web_command)
+                self._webserver.start()
+
+                # Send initial radio info
+                info = self.radio.get_radio_info()
+                if info:
+                    self._webserver.broadcast_radio_info(info)
+
+                print(f"\nOpen http://localhost:{http_port}/ in your browser")
+                print("Use 'fastscan start' to begin streaming spectrum data")
+
+            except Exception as e:
+                print(f"Failed to start web server: {e}")
+                self._webserver = None
+
+        elif cmd == 'stop':
+            if self._webserver:
+                self._webserver.stop()
+                self._webserver = None
+                print("Web server stopped")
+            else:
+                print("Web server not running")
+
+        elif cmd == 'status':
+            if self._webserver:
+                print("Web server: RUNNING")
+                print(f"  HTTP:      http://localhost:{self._webserver.http_port}/")
+                print(f"  WebSocket: ws://localhost:{self._webserver.ws_port}/")
+            else:
+                print("Web server: STOPPED")
+
+        else:
+            print("Usage: webserver start [http_port] [ws_port] | stop | status")
+
+    def _handle_web_command(self, cmd: str, params: dict) -> any:
+        """Handle commands from web UI."""
+        if cmd == 'fastscan_start':
+            start_ch = params.get('start_ch', 0)
+            end_ch = params.get('end_ch', 33)
+            self.radio.set_fast_scan_callback(self._fast_scan_callback)
+            self.radio.start_fast_scan(start_ch, end_ch)
+            return {'status': 'started', 'start_ch': start_ch, 'end_ch': end_ch}
+
+        elif cmd == 'fastscan_stop':
+            self.radio.stop_fast_scan()
+            self.radio.set_fast_scan_callback(None)
+            return {'status': 'stopped'}
+
+        elif cmd == 'sniff_start':
+            self._sniffing = True
+            self.radio.set_rx_callback(self._rx_callback)
+            return {'status': 'started'}
+
+        elif cmd == 'sniff_stop':
+            self._sniffing = False
+            self.radio.set_rx_callback(None)
+            return {'status': 'stopped'}
+
+        elif cmd == 'set_channel':
+            channel = params.get('channel')
+            if channel is not None:
+                success = self.radio.set_channel(int(channel))
+                return {'success': success, 'channel': channel}
+            return {'error': 'missing channel parameter'}
+
+        elif cmd == 'set_power':
+            power = params.get('power')
+            if power is not None:
+                success = self.radio.set_tx_power(int(power))
+                return {'success': success, 'power': power}
+            return {'error': 'missing power parameter'}
+
+        elif cmd == 'get_info':
+            info = self.radio.get_radio_info()
+            if self._webserver:
+                self._webserver.broadcast_radio_info(info)
+            return info
+
+        elif cmd == 'ping':
+            success = self.radio.ping()
+            return {'success': success, 'version': self.radio.version}
+
+        elif cmd == 'jam_start':
+            channel = params.get('channel', 26)
+            interval_ms = params.get('interval_ms', 5)
+            self.radio.start_jam(channel, interval_ms)
+            return {'status': 'started', 'channel': channel, 'interval_ms': interval_ms}
+
+        elif cmd == 'jam_stop':
+            self.radio.stop_jam()
+            return {'status': 'stopped'}
+
+        else:
+            return {'error': f'unknown command: {cmd}'}
 
     # -------------------------------------------------------------------------
     # Debug commands

@@ -140,3 +140,95 @@ serialradio/
 ### Fast scan not working
 1. Check channel range is valid for radio (use `info` command)
 2. Maximum 32 channels per sweep due to buffer limits
+
+## Border Router Integration
+
+### How the Native Border Router Works
+
+The native border router (`examples/rpl-border-router` compiled for `TARGET=native`) communicates with a slip-radio device over serial using a simple command protocol:
+
+**Protocol Format:**
+- Commands use prefix: `!` (directive) or `?` (query)
+- Raw IP packets have NO prefix - sent directly as SLIP frames
+
+**Key Commands:**
+| Command | Direction | Purpose |
+|---------|-----------|---------|
+| `!S` | Host→Radio | Send packet: `[!S][SID][attrs][payload]` |
+| `!R` | Radio→Host | TX status: `[!R][SID][status][retries]` |
+| `!V` | Host→Radio | Set param: `[!V][type_hi][type_lo][val_hi][val_lo]` |
+| `?V` | Host→Radio | Get param: `[?V][type_hi][type_lo]` |
+| `?M` | Host→Radio | Query MAC address |
+| `!M` | Radio→Host | MAC response: `[!M][8 bytes MAC]` |
+
+**Packet Flow:**
+```
+TX: Host sends !S command → slip-radio transmits → sends !R status back
+RX: Radio receives frame → slipnet_input() → slip_write() raw packet to host
+```
+
+### Key Source Files
+
+**On the radio side (slip-radio):**
+- `examples/slip-radio/slip-radio.c` - Command handler (`slip_radio_cmd_handler`)
+- `examples/slip-radio/slip-net.c` - RX forwarding (`slipnet_input` calls `slip_write`)
+
+**On the host side (native border router):**
+- `os/services/rpl-border-router/native/slip-dev.c` - SLIP I/O, serial port handling
+- `os/services/rpl-border-router/native/border-router-cmds.c` - Command processing
+- `os/services/rpl-border-router/native/border-router-mac.c` - Builds `!S` commands
+
+**Shared:**
+- `os/services/slip-cmd/cmd.c` - Command dispatcher
+- `os/services/slip-cmd/packetutils.c` - Attribute serialization
+
+### Options for Using serialradio as Border Router
+
+**Option 1: Make serialradio speak slip-radio protocol**
+- Add `!S`, `!R`, `?M`, `!M` command handlers alongside CBOR commands
+- Add RX forwarding via `slipnet_input()` pattern
+- Can then use existing native border router unchanged
+
+**Option 2: Create Python-based border router**
+- Keep our CBOR protocol
+- Write Python border router that:
+  - Receives frames via `RX_FRAME` events
+  - Sends frames via `TX_RAW_FRAME` command
+  - Handles IPv6 routing (using scapy or similar)
+  - Creates TUN/TAP interface for host integration
+
+**Option 3: Modify native border router**
+- Update `slip-dev.c` to speak CBOR/CRC16 instead of raw SLIP
+- More invasive but cleaner long-term
+
+### Adding RX Frame Forwarding to serialradio
+
+To forward received radio frames to the host, add to `serial-radio.c`:
+
+```c
+/* In the radio input callback or MAC layer */
+static void
+forward_rx_frame(const uint8_t *data, uint16_t len, int8_t rssi, uint8_t lqi)
+{
+  cbor_writer_state_t writer;
+  cbor_init_writer(&writer, tx_buf, TX_BUF_SIZE);
+
+  cbor_open_map(&writer);
+  cbor_write_text(&writer, "t", 1);
+  cbor_write_unsigned(&writer, SRADIO_EVT_RX_FRAME);
+  cbor_write_text(&writer, "f", 1);
+  cbor_write_data(&writer, data, len);
+  cbor_write_text(&writer, "r", 1);
+  cbor_write_signed(&writer, rssi);
+  cbor_write_text(&writer, "l", 1);
+  cbor_write_unsigned(&writer, lqi);
+  cbor_close_map(&writer);
+
+  size_t msg_len = cbor_end_writer(&writer);
+  if(msg_len > 0) {
+    send_slip_frame(tx_buf, msg_len);
+  }
+}
+```
+
+Then hook this into the MAC/radio layer input path, similar to how `slip-net.c` does it with `NETSTACK_MAC.input`.

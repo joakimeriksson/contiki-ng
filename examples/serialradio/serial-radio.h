@@ -72,6 +72,8 @@
 #define SRADIO_CMD_RX_OFF            6
 #define SRADIO_CMD_FAST_SCAN_START   7
 #define SRADIO_CMD_FAST_SCAN_STOP    8
+#define SRADIO_CMD_JAM_START         9
+#define SRADIO_CMD_JAM_STOP          10
 
 /*---------------------------------------------------------------------------*/
 /* Event opcodes (Node -> PC) */

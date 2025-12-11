@@ -11,7 +11,9 @@
 #include "dev/button-hal.h"
 #include "dev/leds.h"
 #include "lib/sensors.h"
+#ifdef CONTIKI_TARGET_SIMPLELINK
 #include "batmon-sensor.h"
+#endif
 
 #include <stdint.h>
 #include <inttypes.h>
@@ -51,9 +53,13 @@ AUTOSTART_PROCESSES(&udp_client_process);
 static int
 read_battery(void)
 {
+#ifdef CONTIKI_TARGET_SIMPLELINK
   /* Read battery voltage (available on all CC13xx/CC26xx) */
   int bat_raw = batmon_sensor.value(BATMON_SENSOR_TYPE_VOLT);
   return (bat_raw * 125) >> 5;  /* Convert to mV */
+#else
+  return 0;  /* Not available on this platform */
+#endif
 }
 /*---------------------------------------------------------------------------*/
 static void
@@ -172,7 +178,9 @@ PROCESS_THREAD(udp_client_process, ev, data)
   log_set_level("ipv6", LOG_LEVEL_WARN);
 
   /* Initialize sensors */
+#ifdef CONTIKI_TARGET_SIMPLELINK
   SENSORS_ACTIVATE(batmon_sensor);
+#endif
 
   /* Initialize UDP connection */
   simple_udp_register(&udp_conn, UDP_CLIENT_PORT, NULL,

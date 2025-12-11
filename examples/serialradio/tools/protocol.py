@@ -20,6 +20,8 @@ class Command(IntEnum):
     RX_OFF = 6
     FAST_SCAN_START = 7
     FAST_SCAN_STOP = 8
+    JAM_START = 9
+    JAM_STOP = 10
     TX_RAW_FRAME = 50
 
 

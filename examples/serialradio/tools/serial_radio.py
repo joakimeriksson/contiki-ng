@@ -329,6 +329,36 @@ class SerialRadio:
         }, expect_response=False)
         return True
 
+    def start_jam(self, channel: int = 26, interval_ms: int = 5,
+                  payload: Optional[bytes] = None) -> bool:
+        """
+        Start jamming on a channel by continuously transmitting.
+
+        Args:
+            channel: Channel to jam (default 26)
+            interval_ms: Interval between transmissions in ms (default 5)
+            payload: Optional custom payload bytes (default: 100 bytes of 0xAA)
+
+        Returns:
+            True if command sent successfully
+        """
+        cmd = {
+            Key.TYPE: Command.JAM_START,
+            Key.CHANNEL: channel,
+            Key.DWELL: interval_ms,
+        }
+        if payload is not None:
+            cmd[Key.FRAME] = payload
+        self._send_command(cmd, expect_response=False)
+        return True
+
+    def stop_jam(self) -> bool:
+        """Stop jamming."""
+        self._send_command({
+            Key.TYPE: Command.JAM_STOP
+        }, expect_response=False)
+        return True
+
     def set_rx_callback(self, callback: Optional[Callable[[RxFrame], None]]):
         """Set callback for received frames."""
         self._rx_callback = callback

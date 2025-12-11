@@ -86,11 +86,14 @@
 
 /* CC13xx/CC26xx specific */
 
-/* Use IEEE 802.15.4 mode (2.4 GHz) by default */
-/* Comment out for Sub-GHz mode */
-/* #define RF_CONF_MODE RF_MODE_SUB_1_GHZ */
+/* Use Sub-GHz 868 MHz mode */
+#define RF_CONF_MODE RF_MODE_SUB_1_GHZ
 
 #endif /* CONTIKI_TARGET_SIMPLELINK */
+
+/* Zolertia Zoul/Firefly specific */
+/* Use CC1200 Sub-GHz radio (set to 0 for CC2538 2.4 GHz) */
+#define ZOUL_CONF_USE_CC1200_RADIO 1
 
 /*---------------------------------------------------------------------------*/
 /* UART/Serial configuration */
