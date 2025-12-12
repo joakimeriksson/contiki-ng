@@ -81,6 +81,20 @@ class SerialRadioCLI(cmd.Cmd):
                 print(f"  {name}: 0x{value:04X}")
             elif 'pan' in key:
                 print(f"  {name}: 0x{value:04X}")
+            elif key == 'rx_mode':
+                # Decode RX mode flags
+                flags = []
+                if value == 0:
+                    flags.append("PROMISCUOUS")
+                else:
+                    if value & 0x01:
+                        flags.append("ADDR_FILTER")
+                    if value & 0x02:
+                        flags.append("AUTOACK")
+                    if value & 0x04:
+                        flags.append("POLL_MODE")
+                mode_str = " | ".join(flags) if flags else "NONE"
+                print(f"  {name}: 0x{value:02X} ({mode_str})")
             else:
                 print(f"  {name}: {value}")
 

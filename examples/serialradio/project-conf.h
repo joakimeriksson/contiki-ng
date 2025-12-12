@@ -44,6 +44,9 @@
 
 #define LOG_CONF_LEVEL_MAIN LOG_LEVEL_INFO
 #define LOG_CONF_LEVEL_SERIAL_RADIO LOG_LEVEL_DBG
+#define LOG_CONF_LEVEL_NULLNET LOG_LEVEL_DBG
+#define LOG_CONF_LEVEL_MAC LOG_LEVEL_DBG
+#define LOG_CONF_LEVEL_RADIO LOG_LEVEL_DBG
 
 /*---------------------------------------------------------------------------*/
 /* Network stack configuration */
@@ -52,8 +55,9 @@
 /* Use nullnet - we don't need IP networking */
 #define NETSTACK_CONF_NETWORK nullnet_driver
 
-/* Use nullmac - direct radio access */
-#define NETSTACK_CONF_MAC nullmac_driver
+/* Use sniffer MAC - forwards all packets to network layer */
+extern const struct mac_driver sniffer_mac_driver;
+#define NETSTACK_CONF_MAC sniffer_mac_driver
 
 /* No framer - we handle raw frames */
 #define NETSTACK_CONF_FRAMER no_framer

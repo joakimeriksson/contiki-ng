@@ -43,6 +43,7 @@
 #include "lib/crc16.h"
 #include "net/ipv6/uip.h"
 #include "net/netstack.h"
+#include "net/nullnet/nullnet.h"
 #include "net/packetbuf.h"
 #include "sys/log.h"
 
@@ -61,7 +62,7 @@
 /* Configuration */
 /*---------------------------------------------------------------------------*/
 
-#define VERSION_STRING "serial-radio-1.0"
+#define VERSION_STRING "serial-radio-1.1-sniff"
 
 #define TX_BUF_SIZE SERIAL_RADIO_CONF_BUF_SIZE
 #define RX_BUF_SIZE SERIAL_RADIO_CONF_BUF_SIZE
@@ -110,6 +111,10 @@ static uint8_t jam_payload_len;
 static struct etimer jam_timer;
 static radio_value_t saved_tx_mode;  /* Saved TX mode before jamming */
 
+/* Sniffing state */
+static bool sniffing;
+static radio_value_t saved_rx_mode;  /* Saved RX mode before sniffing */
+
 /*---------------------------------------------------------------------------*/
 /* Process declaration */
 /*---------------------------------------------------------------------------*/
@@ -126,8 +131,12 @@ static void send_pong(uint8_t msg_id);
 static void send_param_response(uint8_t msg_id, uint16_t param, int32_t value);
 static void send_tx_response(uint8_t msg_id, uint8_t status);
 static void send_rssi_result(uint8_t channel, int8_t rssi);
+static void send_rx_frame_event(const uint8_t *frame, uint16_t len,
+                                int8_t rssi, uint8_t lqi);
 static void handle_command(const uint8_t *data, size_t len);
 static void slip_input_callback(void);
+static void rx_packet_callback(const void *data, uint16_t len,
+                               const linkaddr_t *src, const linkaddr_t *dest);
 static void do_fast_scan_sweep(void);
 
 /*---------------------------------------------------------------------------*/
@@ -273,7 +282,7 @@ static void send_heartbeat(void) {
 }
 /*---------------------------------------------------------------------------*/
 static void send_fast_scan_result(uint8_t start_ch, uint8_t end_ch,
-                                  int8_t *rssi_values) {
+                                  int16_t *rssi_values) {
   cbor_writer_state_t writer;
   cbor_init_writer(&writer, tx_buf, TX_BUF_SIZE);
   uint8_t num_channels = end_ch - start_ch + 1;
@@ -299,6 +308,46 @@ static void send_fast_scan_result(uint8_t start_ch, uint8_t end_ch,
   if (len > 0) {
     send_slip_frame(tx_buf, len);
   }
+}
+/*---------------------------------------------------------------------------*/
+static void send_rx_frame_event(const uint8_t *frame, uint16_t len,
+                                int8_t rssi, uint8_t lqi) {
+  cbor_writer_state_t writer;
+  cbor_init_writer(&writer, tx_buf, TX_BUF_SIZE);
+
+  cbor_open_map(&writer);
+  cbor_write_text(&writer, "t", 1);
+  cbor_write_unsigned(&writer, SRADIO_EVT_RX_FRAME);
+  cbor_write_text(&writer, "f", 1);
+  cbor_write_data(&writer, frame, len);
+  cbor_write_text(&writer, "r", 1);
+  cbor_write_signed(&writer, rssi);
+  cbor_write_text(&writer, "l", 1);
+  cbor_write_unsigned(&writer, lqi);
+  cbor_close_map(&writer);
+
+  size_t msg_len = cbor_end_writer(&writer);
+  if (msg_len > 0) {
+    send_slip_frame(tx_buf, msg_len);
+  }
+}
+/*---------------------------------------------------------------------------*/
+/* Nullnet RX callback - called when radio receives a packet */
+/*---------------------------------------------------------------------------*/
+static void rx_packet_callback(const void *data, uint16_t len,
+                               const linkaddr_t *src, const linkaddr_t *dest) {
+  if (!sniffing) {
+    return;
+  }
+
+  /* Get RSSI and LQI from packetbuf attributes */
+  int8_t rssi = (int8_t)packetbuf_attr(PACKETBUF_ATTR_RSSI);
+  uint8_t lqi = packetbuf_attr(PACKETBUF_ATTR_LINK_QUALITY);
+
+  LOG_DBG("RX frame: len=%u rssi=%d lqi=%u\n", len, rssi, lqi);
+
+  /* Send RX frame event to host */
+  send_rx_frame_event((const uint8_t *)data, len, rssi, lqi);
 }
 /*---------------------------------------------------------------------------*/
 /* Command handlers */
@@ -391,13 +440,33 @@ static void handle_scan_stop(uint8_t msg_id) {
 }
 /*---------------------------------------------------------------------------*/
 static void handle_rx_on(uint8_t msg_id) {
+  /* Save current RX mode before switching to promiscuous */
+  if(NETSTACK_RADIO.get_value(RADIO_PARAM_RX_MODE, &saved_rx_mode) != RADIO_RESULT_OK) {
+    saved_rx_mode = RADIO_RX_MODE_ADDRESS_FILTER | RADIO_RX_MODE_AUTOACK;
+  }
+
+  /* Set promiscuous mode - disable address filtering and auto-ACK */
+  if(NETSTACK_RADIO.set_value(RADIO_PARAM_RX_MODE, 0) != RADIO_RESULT_OK) {
+    LOG_WARN("Could not set promiscuous mode\n");
+  }
+
+  sniffing = true;
   NETSTACK_RADIO.on();
-  send_param_response(msg_id, RADIO_PARAM_POWER_MODE, RADIO_POWER_MODE_ON);
+  LOG_INFO("Sniffing enabled (promiscuous mode, saved RX mode: 0x%02x)\n",
+           saved_rx_mode);
+  send_param_response(msg_id, RADIO_PARAM_RX_MODE, 0);
 }
 /*---------------------------------------------------------------------------*/
 static void handle_rx_off(uint8_t msg_id) {
-  NETSTACK_RADIO.off();
-  send_param_response(msg_id, RADIO_PARAM_POWER_MODE, RADIO_POWER_MODE_OFF);
+  sniffing = false;
+
+  /* Restore previous RX mode */
+  if(NETSTACK_RADIO.set_value(RADIO_PARAM_RX_MODE, saved_rx_mode) != RADIO_RESULT_OK) {
+    LOG_WARN("Could not restore RX mode\n");
+  }
+
+  LOG_INFO("Sniffing disabled (restored RX mode: 0x%02x)\n", saved_rx_mode);
+  send_param_response(msg_id, RADIO_PARAM_RX_MODE, saved_rx_mode);
 }
 /*---------------------------------------------------------------------------*/
 static void handle_fast_scan_start(uint8_t msg_id, uint8_t start_ch,
@@ -493,7 +562,7 @@ static void do_jam_transmit(void) {
 }
 /*---------------------------------------------------------------------------*/
 static void do_fast_scan_sweep(void) {
-  int8_t rssi_values[32];
+  int16_t rssi_values[32];
   radio_value_t rssi = 0;
   uint8_t num_channels = fast_scan_end_ch - fast_scan_start_ch + 1;
 
@@ -506,7 +575,7 @@ static void do_fast_scan_sweep(void) {
     /* Delay for radio to settle and RX to become active */
     clock_delay_usec(2000);
     NETSTACK_RADIO.get_value(RADIO_PARAM_RSSI, &rssi);
-    rssi_values[i] = (int8_t)rssi;
+    rssi_values[i] = (int16_t)rssi;
   }
 
   /* Send all results in one message */
@@ -815,11 +884,15 @@ PROCESS_THREAD(serial_radio_process, ev, data) {
   fast_scanning = false;
   fast_scan_seq = 0;
   jamming = false;
+  sniffing = false;
 
   /* Initialize SLIP - this sets up UART with slip_input_byte callback */
   slip_arch_init();
   process_start(&slip_process, NULL);
   slip_set_input_callback(slip_input_callback);
+
+  /* Register nullnet callback for packet sniffing */
+  nullnet_set_input_callback(rx_packet_callback);
 
   /* Turn on radio */
   NETSTACK_RADIO.on();
