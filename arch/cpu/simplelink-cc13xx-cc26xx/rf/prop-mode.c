@@ -86,7 +86,10 @@
 /* Log configuration */
 #include "sys/log.h"
 #define LOG_MODULE "Radio"
-#define LOG_LEVEL LOG_LEVEL_NONE
+#ifndef LOG_CONF_LEVEL_RADIO
+#define LOG_CONF_LEVEL_RADIO LOG_LEVEL_NONE
+#endif
+#define LOG_LEVEL LOG_CONF_LEVEL_RADIO
 /*---------------------------------------------------------------------------*/
 #undef CLAMP
 #define CLAMP(v, vmin, vmax)  (MAX(MIN(v, vmax), vmin))

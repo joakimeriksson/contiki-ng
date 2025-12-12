@@ -74,7 +74,10 @@
 /* Log configuration */
 #include "sys/log.h"
 #define LOG_MODULE "Radio"
-#define LOG_LEVEL LOG_LEVEL_NONE
+#ifndef LOG_CONF_LEVEL_RADIO
+#define LOG_CONF_LEVEL_RADIO LOG_LEVEL_NONE
+#endif
+#define LOG_LEVEL LOG_CONF_LEVEL_RADIO
 /*---------------------------------------------------------------------------*/
 #define CMD_FS_RETRIES          3
 
@@ -131,6 +134,8 @@ cmd_rx_cb(RF_Handle client, RF_CmdHandle command, RF_EventMask events)
   /* Unused arguments */
   (void)client;
   (void)command;
+
+  /* NOTE: This is interrupt context - no printf/LOG here! */
 
   if(radio_mode->poll_mode) {
     return;
@@ -853,11 +858,13 @@ PROCESS_THREAD(rf_sched_process, ev, data)
     }
 
     if(ev == PROCESS_EVENT_POLL) {
+      LOG_DBG("RX poll triggered\n");
       do {
         watchdog_periodic();
 
         packetbuf_clear();
         len = NETSTACK_RADIO.read(packetbuf_dataptr(), PACKETBUF_SIZE);
+        LOG_DBG("Radio read: %d bytes\n", len);
 
         /*
          * RX will stop if the RX buffers are full. In this case, restart
@@ -874,7 +881,7 @@ PROCESS_THREAD(rf_sched_process, ev, data)
 
         if(len > 0) {
           packetbuf_set_datalen(len);
-
+          LOG_INFO("RX packet: %d bytes, calling MAC input\n", len);
           NETSTACK_MAC.input();
         }
         /* Only break when no more packets pending */
