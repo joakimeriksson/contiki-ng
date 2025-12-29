@@ -42,6 +42,9 @@
 #define LOG_MODULE "App"
 #define LOG_LEVEL LOG_LEVEL_INFO
 
+#include "shell.h"
+#include "shell-commands.h"
+
 /* For dynamic log level control */
 void log_set_level(const char *module, int level);
 
@@ -52,10 +55,14 @@ void log_set_level(const char *module, int level);
 #define MSG_TYPE_KEEPALIVE 'k'
 #define MSG_TYPE_BUTTON    'b'
 #define MSG_TYPE_ACK       'a'
+#define MSG_TYPE_CONFIG    'c'
+
+/* Client keepalive interval (seconds) - 0 means don't send in ACK */
+static int client_interval = 0;
 
 static struct simple_udp_connection udp_conn;
 static uint32_t seq_num = 0;
-static uint32_t rx_count = 0;
+static uint32_t msg_rx_count = 0;
 
 /* Store last client address for button-triggered messages */
 static uip_ipaddr_t last_client_addr;
@@ -64,12 +71,46 @@ static uint8_t have_client = 0;
 PROCESS(udp_server_process, "UDP server");
 AUTOSTART_PROCESSES(&udp_server_process);
 /*---------------------------------------------------------------------------*/
+static PT_THREAD(cmd_interval(struct pt *pt, shell_output_func output, char *args))
+{
+  PT_BEGIN(pt);
+
+  if(args == NULL || strlen(args) == 0) {
+    SHELL_OUTPUT(output, "Current interval: %d seconds (0=not sent)\n", client_interval);
+  } else {
+    int val = atoi(args);
+    if(val >= 0 && val <= 3600) {
+      client_interval = val;
+      SHELL_OUTPUT(output, "Interval set to %d seconds\n", client_interval);
+    } else {
+      SHELL_OUTPUT(output, "Invalid interval (0-3600)\n");
+    }
+  }
+
+  PT_END(pt);
+}
+/*---------------------------------------------------------------------------*/
+static const struct shell_command_t app_commands[] = {
+  { "interval", cmd_interval, "'> interval [sec]': get/set client keepalive interval" },
+  { NULL, NULL, NULL },
+};
+static struct shell_command_set_t app_shell_command_set = {
+  .next = NULL,
+  .commands = app_commands,
+};
+/*---------------------------------------------------------------------------*/
 static void
 send_ack(const uip_ipaddr_t *dest, uint32_t ack_seq, int16_t rssi)
 {
-  static char msg[64];
-  snprintf(msg, sizeof(msg), "{\"t\":\"%c\",\"s\":%" PRIu32 ",\"r\":%d}",
-           MSG_TYPE_ACK, ack_seq, rssi);
+  static char msg[80];
+
+  if(client_interval > 0) {
+    snprintf(msg, sizeof(msg), "{\"t\":\"%c\",\"s\":%" PRIu32 ",\"r\":%d,\"int\":%d}",
+             MSG_TYPE_ACK, ack_seq, rssi, client_interval);
+  } else {
+    snprintf(msg, sizeof(msg), "{\"t\":\"%c\",\"s\":%" PRIu32 ",\"r\":%d}",
+             MSG_TYPE_ACK, ack_seq, rssi);
+  }
 
   LOG_INFO("Tx ACK seq=%" PRIu32 " rssi=%d to ", ack_seq, rssi);
   LOG_INFO_6ADDR(dest);
@@ -140,7 +181,7 @@ udp_rx_callback(struct simple_udp_connection *c,
     button_id = atoi(bp + 4);
   }
 
-  rx_count++;
+  msg_rx_count++;
 
   /* Flash LED on receive */
   leds_single_on(LEDS_LED1);
@@ -177,11 +218,14 @@ PROCESS_THREAD(udp_server_process, ev, data)
 
   /* Lower log levels at startup for performance (ACK timing sensitive)
    * Use shell "log mac 4" etc. to enable debug when needed */
-  log_set_level("mac", LOG_LEVEL_WARN);
+  log_set_level("mac", LOG_LEVEL_INFO);   /* See CSMA tx retries */
   log_set_level("framer", LOG_LEVEL_WARN);
   log_set_level("radio", LOG_LEVEL_WARN);
   log_set_level("rpl", LOG_LEVEL_INFO);
   log_set_level("ipv6", LOG_LEVEL_WARN);
+
+  /* Register shell commands */
+  shell_command_set_register(&app_shell_command_set);
 
   /* Initialize DAG root */
   NETSTACK_ROUTING.root_start();

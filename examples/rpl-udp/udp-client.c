@@ -14,6 +14,9 @@
 #ifdef CONTIKI_TARGET_SIMPLELINK
 #include "batmon-sensor.h"
 #endif
+#ifdef BOARD_SENSORTAG
+#include "board-peripherals.h"
+#endif
 
 #include <stdint.h>
 #include <inttypes.h>
@@ -37,6 +40,11 @@ void log_set_level(const char *module, int level);
 #define MSG_TYPE_KEEPALIVE 'k'
 #define MSG_TYPE_BUTTON    'b'
 #define MSG_TYPE_ACK       'a'
+#define MSG_TYPE_CONFIG    'c'
+
+/* Default and current keepalive interval */
+#define DEFAULT_KEEPALIVE_INTERVAL (10 * CLOCK_SECOND)
+static clock_time_t keepalive_interval = DEFAULT_KEEPALIVE_INTERVAL;
 
 static struct simple_udp_connection udp_conn;
 static uint32_t seq_num = 0;
@@ -62,10 +70,34 @@ read_battery(void)
 #endif
 }
 /*---------------------------------------------------------------------------*/
+#ifdef BOARD_SENSORTAG
+/* Sensor reading storage */
+static int sensor_temp = 0;     /* Temperature in centi-degrees C */
+static int sensor_humid = 0;    /* Humidity in centi-percent RH */
+static int sensor_light = 0;    /* Light in lux */
+
+static void
+trigger_sensors(void)
+{
+  /* These sensors work asynchronously - trigger them now, read later */
+  SENSORS_ACTIVATE(hdc_1000_sensor);
+  SENSORS_ACTIVATE(opt_3001_sensor);
+}
+
+static void
+read_sensors(void)
+{
+  /* Read latched values from async sensors */
+  sensor_temp = hdc_1000_sensor.value(HDC_1000_SENSOR_TYPE_TEMP);
+  sensor_humid = hdc_1000_sensor.value(HDC_1000_SENSOR_TYPE_HUMID);
+  sensor_light = opt_3001_sensor.value(0);
+}
+#endif
+/*---------------------------------------------------------------------------*/
 static void
 send_keepalive(void)
 {
-  static char msg[64];
+  static char msg[128];
   uip_ipaddr_t dest_ipaddr;
   int bat;
 
@@ -77,6 +109,21 @@ send_keepalive(void)
 
   bat = read_battery();
 
+#ifdef BOARD_SENSORTAG
+  /* Read sensor values that were triggered earlier */
+  read_sensors();
+
+  snprintf(msg, sizeof(msg),
+           "{\"t\":\"%c\",\"s\":%" PRIu32 ",\"r\":%d,\"bat\":%d,"
+           "\"tmp\":%d,\"hum\":%d,\"lgt\":%d}",
+           MSG_TYPE_KEEPALIVE, seq_num, last_rssi, bat,
+           sensor_temp, sensor_humid, sensor_light);
+
+  LOG_INFO("Tx seq=%" PRIu32 " bat=%dmV temp=%d.%02dC humid=%d%% light=%d\n",
+           seq_num, bat,
+           sensor_temp / 100, sensor_temp % 100,
+           sensor_humid / 100, sensor_light);
+#else
   snprintf(msg, sizeof(msg),
            "{\"t\":\"%c\",\"s\":%" PRIu32 ",\"r\":%d,\"bat\":%d}",
            MSG_TYPE_KEEPALIVE, seq_num, last_rssi, bat);
@@ -84,6 +131,7 @@ send_keepalive(void)
   LOG_INFO("Tx keepalive seq=%" PRIu32 " rssi=%d bat=%dmV to ", seq_num, last_rssi, bat);
   LOG_INFO_6ADDR(&dest_ipaddr);
   LOG_INFO_("\n");
+#endif
 
   simple_udp_sendto(&udp_conn, msg, strlen(msg), &dest_ipaddr);
   seq_num++;
@@ -152,6 +200,25 @@ udp_rx_callback(struct simple_udp_connection *c,
       int server_rssi = atoi(rp + 4);
       LOG_INFO("Server heard us at %d dBm\n", server_rssi);
     }
+    /* Check for interval config in ACK */
+    const char *ip = strstr((const char *)data, "\"int\":");
+    if(ip != NULL) {
+      int new_interval = atoi(ip + 6);
+      if(new_interval > 0 && new_interval <= 3600) {
+        keepalive_interval = new_interval * CLOCK_SECOND;
+        LOG_INFO("Interval set to %d seconds\n", new_interval);
+      }
+    }
+  } else if(type == MSG_TYPE_CONFIG) {
+    /* Config message from server */
+    const char *ip = strstr((const char *)data, "\"int\":");
+    if(ip != NULL) {
+      int new_interval = atoi(ip + 6);
+      if(new_interval > 0 && new_interval <= 3600) {
+        keepalive_interval = new_interval * CLOCK_SECOND;
+        LOG_INFO("Interval set to %d seconds\n", new_interval);
+      }
+    }
   } else if(type == MSG_TYPE_BUTTON) {
     LOG_INFO("Server button press received!\n");
     /* Toggle LED on remote button */
@@ -171,7 +238,7 @@ PROCESS_THREAD(udp_client_process, ev, data)
 
   /* Lower log levels at startup for performance (ACK timing sensitive)
    * Use shell "log mac 4" etc. to enable debug when needed */
-  log_set_level("mac", LOG_LEVEL_WARN);
+  log_set_level("mac", LOG_LEVEL_INFO);   /* See CSMA tx retries */
   log_set_level("framer", LOG_LEVEL_WARN);
   log_set_level("radio", LOG_LEVEL_WARN);
   log_set_level("rpl", LOG_LEVEL_INFO);
@@ -180,6 +247,10 @@ PROCESS_THREAD(udp_client_process, ev, data)
   /* Initialize sensors */
 #ifdef CONTIKI_TARGET_SIMPLELINK
   SENSORS_ACTIVATE(batmon_sensor);
+#endif
+#ifdef BOARD_SENSORTAG
+  /* Trigger first sensor reading */
+  trigger_sensors();
 #endif
 
   /* Initialize UDP connection */
@@ -213,6 +284,11 @@ PROCESS_THREAD(udp_client_process, ev, data)
     if(ev == PROCESS_EVENT_TIMER && data == &periodic_timer) {
       send_keepalive();
 
+#ifdef BOARD_SENSORTAG
+      /* Trigger sensors for next reading cycle */
+      trigger_sensors();
+#endif
+
       /* Turn off TX LED after short delay */
       etimer_set(&led_timer, CLOCK_SECOND / 4);
 
@@ -222,7 +298,7 @@ PROCESS_THREAD(udp_client_process, ev, data)
       }
 
       /* Reset keepalive timer with jitter */
-      etimer_set(&periodic_timer, KEEPALIVE_INTERVAL
+      etimer_set(&periodic_timer, keepalive_interval
                  - CLOCK_SECOND + (random_rand() % (2 * CLOCK_SECOND)));
     }
 
