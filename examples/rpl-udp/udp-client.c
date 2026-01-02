@@ -51,6 +51,9 @@ static uint32_t seq_num = 0;
 static uint32_t rx_count = 0;
 static uint32_t tx_count = 0;
 
+/* Multicast address for all traffic */
+static uip_ipaddr_t mcast_addr;
+
 /* Last received RSSI (to include in keepalives) */
 static int16_t last_rssi = 0;
 
@@ -98,14 +101,7 @@ static void
 send_keepalive(void)
 {
   static char msg[128];
-  uip_ipaddr_t dest_ipaddr;
   int bat;
-
-  if(!NETSTACK_ROUTING.node_is_reachable() ||
-     !NETSTACK_ROUTING.get_root_ipaddr(&dest_ipaddr)) {
-    LOG_INFO("Not reachable yet\n");
-    return;
-  }
 
   bat = read_battery();
 
@@ -128,12 +124,12 @@ send_keepalive(void)
            "{\"t\":\"%c\",\"s\":%" PRIu32 ",\"r\":%d,\"bat\":%d}",
            MSG_TYPE_KEEPALIVE, seq_num, last_rssi, bat);
 
-  LOG_INFO("Tx keepalive seq=%" PRIu32 " rssi=%d bat=%dmV to ", seq_num, last_rssi, bat);
-  LOG_INFO_6ADDR(&dest_ipaddr);
-  LOG_INFO_("\n");
+  LOG_INFO("Tx MCAST keepalive seq=%" PRIu32 " rssi=%d bat=%dmV\n",
+           seq_num, last_rssi, bat);
 #endif
 
-  simple_udp_sendto(&udp_conn, msg, strlen(msg), &dest_ipaddr);
+  /* Send via multicast to ff02::1 */
+  simple_udp_sendto(&udp_conn, msg, strlen(msg), &mcast_addr);
   seq_num++;
   tx_count++;
 
@@ -144,22 +140,14 @@ static void
 send_button(int button_id)
 {
   static char msg[64];
-  uip_ipaddr_t dest_ipaddr;
-
-  if(!NETSTACK_ROUTING.node_is_reachable() ||
-     !NETSTACK_ROUTING.get_root_ipaddr(&dest_ipaddr)) {
-    LOG_INFO("Not reachable yet\n");
-    return;
-  }
 
   snprintf(msg, sizeof(msg), "{\"t\":\"%c\",\"s\":%" PRIu32 ",\"b\":%d}",
            MSG_TYPE_BUTTON, seq_num, button_id);
 
-  LOG_INFO("Tx button=%d seq=%" PRIu32 " to ", button_id, seq_num);
-  LOG_INFO_6ADDR(&dest_ipaddr);
-  LOG_INFO_("\n");
+  LOG_INFO("Tx MCAST button=%d seq=%" PRIu32 "\n", button_id, seq_num);
 
-  simple_udp_sendto(&udp_conn, msg, strlen(msg), &dest_ipaddr);
+  /* Send via multicast to ff02::1 */
+  simple_udp_sendto(&udp_conn, msg, strlen(msg), &mcast_addr);
   seq_num++;
   tx_count++;
 }
@@ -253,14 +241,17 @@ PROCESS_THREAD(udp_client_process, ev, data)
   trigger_sensors();
 #endif
 
-  /* Initialize UDP connection */
+  /* Initialize multicast address ff02::1 (all-nodes) */
+  uip_ip6addr(&mcast_addr, 0xff02, 0, 0, 0, 0, 0, 0, 0x0001);
+
+  /* Initialize UDP connection - send to multicast, receive replies */
   simple_udp_register(&udp_conn, UDP_CLIENT_PORT, NULL,
                       UDP_SERVER_PORT, udp_rx_callback);
 
   /* Start keepalive timer with some jitter */
   etimer_set(&periodic_timer, random_rand() % KEEPALIVE_INTERVAL);
 
-  LOG_INFO("UDP client started\n");
+  LOG_INFO("UDP client started (MULTICAST mode to ff02::1)\n");
   LOG_INFO("Button count: %u\n", button_hal_button_count);
 
   while(1) {

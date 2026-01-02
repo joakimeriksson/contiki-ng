@@ -16,4 +16,14 @@
 #define CSMA_CONF_ACK_WAIT_TIME (RTIMER_SECOND / 100)
 #endif
 
+/*
+ * RPL resilience settings - tolerate worse links when no alternatives exist
+ */
+
+/* Allow worse link quality - default 512 (ETX 4.0), now ETX 8.0 */
+#define RPL_MRHOF_CONF_MAX_LINK_METRIC     1024
+
+/* Allow higher path cost - default 32768, doubled */
+#define RPL_MRHOF_CONF_MAX_PATH_COST       65535
+
 #endif /* PROJECT_CONF_H_ */

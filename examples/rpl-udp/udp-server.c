@@ -50,19 +50,23 @@ void log_set_level(const char *module, int level);
 
 #define UDP_CLIENT_PORT 8765
 #define UDP_SERVER_PORT 5678
+#define UDP_MCAST_PORT  5679
 
 /* Message types */
 #define MSG_TYPE_KEEPALIVE 'k'
 #define MSG_TYPE_BUTTON    'b'
 #define MSG_TYPE_ACK       'a'
 #define MSG_TYPE_CONFIG    'c'
+#define MSG_TYPE_MCAST     'm'
 
 /* Client keepalive interval (seconds) - 0 means don't send in ACK */
 static int client_interval = 0;
 
 static struct simple_udp_connection udp_conn;
+static struct simple_udp_connection mcast_conn;
 static uint32_t seq_num = 0;
 static uint32_t msg_rx_count = 0;
+static uint32_t mcast_rx_count = 0;
 
 /* Store last client address for button-triggered messages */
 static uip_ipaddr_t last_client_addr;
@@ -138,6 +142,22 @@ send_button_to_clients(int button_id)
 
   simple_udp_sendto(&udp_conn, msg, strlen(msg), &last_client_addr);
   seq_num++;
+}
+/*---------------------------------------------------------------------------*/
+static void
+mcast_rx_callback(struct simple_udp_connection *c,
+                  const uip_ipaddr_t *sender_addr,
+                  uint16_t sender_port,
+                  const uip_ipaddr_t *receiver_addr,
+                  uint16_t receiver_port,
+                  const uint8_t *data,
+                  uint16_t datalen)
+{
+  LOG_INFO("MCAST Rx '%.*s' from ", datalen, (char *)data);
+  LOG_INFO_6ADDR(sender_addr);
+  LOG_INFO_("\n");
+  mcast_rx_count++;
+  leds_single_toggle(LEDS_LED1);
 }
 /*---------------------------------------------------------------------------*/
 static void
@@ -234,7 +254,12 @@ PROCESS_THREAD(udp_server_process, ev, data)
   simple_udp_register(&udp_conn, UDP_SERVER_PORT, NULL,
                       UDP_CLIENT_PORT, udp_rx_callback);
 
+  /* Initialize multicast UDP connection */
+  simple_udp_register(&mcast_conn, UDP_MCAST_PORT, NULL,
+                      UDP_MCAST_PORT, mcast_rx_callback);
+
   LOG_INFO("UDP server started (DAG root)\n");
+  LOG_INFO("Listening for multicast on port %d\n", UDP_MCAST_PORT);
   LOG_INFO("Button count: %u\n", button_hal_button_count);
 
   while(1) {
