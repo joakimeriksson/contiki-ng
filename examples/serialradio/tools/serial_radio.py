@@ -555,7 +555,11 @@ class SerialRadio:
 
         elif msg_type == Event.ERROR:
             error_code = msg.get(Key.ERROR, 0)
-            print(f"Error from device: {get_error_message(error_code)}")
+            error_msg = f"Error from device: {get_error_message(error_code)}"
+            print(error_msg)
+            # Also send through debug callback so it appears in web console
+            if self._debug_callback:
+                self._debug_callback(f"[ERROR] {error_msg}\n")
 
 
 def list_serial_ports() -> List[str]:

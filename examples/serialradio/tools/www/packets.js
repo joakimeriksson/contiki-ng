@@ -73,7 +73,10 @@ class PacketAnalyzer {
     }
 
     connectWebSocket() {
-        const wsUrl = `ws://localhost:8081/`;
+        // Derive WebSocket port from HTTP port (HTTP port + 1)
+        const httpPort = parseInt(window.location.port) || 8080;
+        const wsPort = httpPort + 1;
+        const wsUrl = `ws://${window.location.hostname}:${wsPort}/`;
         console.log('Connecting to', wsUrl);
 
         try {

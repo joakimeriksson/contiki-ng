@@ -214,36 +214,206 @@ Interactive commands:
 
 # 7. Phased Implementation Plan
 
-## Phase 1 — Foundations
-- SLIP TX/RX  
-- CRC16  
-- CBOR encode/decode  
+## Phase 1 — Foundations ✅ COMPLETE
+- SLIP TX/RX
+- CRC16
+- CBOR encode/decode
 - Ping & version test
 
-## Phase 2 — Radio Control
-- GET_PARAM / SET_PARAM  
-- Channel & TX power control  
+## Phase 2 — Radio Control ✅ COMPLETE
+- GET_PARAM / SET_PARAM
+- Channel & TX power control
 
-## Phase 3 — Raw Frame TX/RX
-- Radio RX events  
-- Frame injection  
+## Phase 3 — Raw Frame TX/RX ✅ COMPLETE
+- Radio RX events
+- Frame injection
 
-## Phase 4 — RSSI Scanner
-- Multi-channel scanning  
-- CBOR events  
+## Phase 4 — RSSI Scanner ✅ COMPLETE
+- Multi-channel scanning (slow scan)
+- Fast scan with batch RSSI results
+- CBOR events
 
-## Phase 5 — CLI Tool
-- Full interactive controller  
+## Phase 5 — CLI Tool ✅ COMPLETE
+- Full interactive controller
+- RX on/off control
+- Jamming mode
 
-## Phase 6 — Documentation
-- Protocol spec  
-- Testing guide  
+## Phase 6 — Web Interface ✅ PARTIAL
+- HTTP server for static files
+- WebSocket for real-time data streaming
+- Spectrum/RSSI visualization
+- RX frame display
+- Heartbeat monitoring
+
+## Phase 7 — Web Interface Enhancements 🚧 IN PROGRESS
+
+### 7.1 Debug Output Streaming
+Stream all device debug output (LOG_INFO, printf, etc.) to web clients.
+
+**Current state:**
+- `webserver.py` has `broadcast_debug()` method ready
+- `serial_radio.py` has `_debug_callback` that receives debug text
+- NOT connected: CLI doesn't forward debug to webserver
+
+**Implementation:**
+1. In `cli.py`, register a debug callback when webserver starts:
+   ```python
+   def _on_debug_text(self, text: str):
+       if self._webserver:
+           self._webserver.broadcast_debug(text, time.time())
+       # Also print to console
+       print(text, end='')
+
+   # In do_webserver start:
+   self.radio.set_debug_callback(self._on_debug_text)
+   ```
+
+2. In web UI (`www/index.html`), add debug console panel:
+   - Scrolling text area for debug messages
+   - Timestamp display
+   - Optional filtering (INFO/DBG/WARN)
+   - Clear button
+
+### 7.2 CLI Command Execution via Web
+Allow sending arbitrary CLI commands from web interface.
+
+**Current state:**
+- `_handle_web_command()` only handles specific structured commands
+- No way to execute arbitrary CLI text like "scan 11 26" or "set channel 20"
+
+**Implementation:**
+1. Add 'cli_command' handler in `cli.py`:
+   ```python
+   elif cmd == 'cli_command':
+       cli_text = params.get('text', '')
+       # Capture output
+       import io
+       from contextlib import redirect_stdout
+       output = io.StringIO()
+       with redirect_stdout(output):
+           self.onecmd(cli_text)
+       return {'output': output.getvalue()}
+   ```
+
+2. In web UI, add command input:
+   - Text input field for CLI commands
+   - Send button / Enter key submit
+   - Command history (up/down arrows)
+   - Output display area
+
+3. WebSocket message format:
+   ```json
+   // Request
+   {"type": "command", "cmd": "cli_command", "params": {"text": "scan 11 26 5"}}
+
+   // Response
+   {"type": "command_result", "cmd": "cli_command", "success": true,
+    "result": {"output": "Starting scan..."}}
+   ```
+
+### 7.3 Web UI Updates Required
+- Add debug console panel (collapsible)
+- Add CLI command input with history
+- Add output display for command results
+- Consider split-pane layout: spectrum | debug+cli
+
+## Phase 8 — Documentation
+- Protocol spec
+- Testing guide
+- Web interface usage guide
 
 ---
 
-# 8. Future Extensions
-- Multi-radio support  
-- PHY mode switching  
-- Time-synced measurements  
-- Wi-SUN, BLE adv sniffer mode  
-- UDP-over-SLIP tunneling  
+# 8. IPv6/6LoWPAN Integration
+
+Extend the CBOR protocol to support full IPv6/6LoWPAN networking over IEEE 802.15.4.
+
+## Goals
+- Use the same CBOR-over-SLIP protocol for both radio control AND packet transfer
+- Support either a Python 6LoWPAN stack or Contiki-NG native border router
+- Keep radio control features (scanning, params, sniffing) alongside networking
+
+## New CBOR Commands for Border Router Support
+
+| Opcode | Name | Direction | Purpose |
+|--------|------|-----------|---------|
+| `50` | `TX_RAW_FRAME` | PC→Node | Send raw 802.15.4 frame (existing) |
+| `52` | `RX_FRAME` | Node→PC | Received raw 802.15.4 frame (existing) |
+| `64` | `GET_MAC_ADDR` | PC→Node | Query node's IEEE 802.15.4 MAC address |
+| `65` | `MAC_ADDR_RESP` | Node→PC | MAC address response (8-byte EUI-64) |
+| `66` | `SET_PAN_ID` | PC→Node | Set PAN ID |
+| `67` | `SET_SHORT_ADDR` | PC→Node | Set short address |
+| `68` | `TX_STATUS` | Node→PC | TX result (success/fail, retries) |
+
+The existing `TX_RAW_FRAME` and `RX_FRAME` commands already handle raw 802.15.4 frames - we just need MAC address query and TX status feedback.
+
+## Option A: Python 6LoWPAN Stack
+Full IPv6/6LoWPAN implementation in Python, radio node just does raw TX/RX.
+
+```
+Linux Host                           │  Radio Node
+─────────────────────────────────────┼────────────────
+ ┌─────────┐    ┌──────────────┐     │   ┌──────────┐
+ │ tun0    │◄──►│ Python       │     │   │ serial   │
+ │ (IPv6)  │    │ 6LoWPAN      │ CBOR│   │ radio    │
+ └─────────┘    │ Stack        │◄───UART──►│ (raw     │
+                └──────────────┘     │   │  802.15.4)│
+                      │              │   └──────────┘
+                ┌─────▼─────┐        │
+                │ serialradio│        │
+                │ CBOR API   │        │
+                └───────────┘        │
+```
+
+**Python stack handles:**
+- IEEE 802.15.4 frame building/parsing
+- 6LoWPAN compression/decompression (IPHC, NHC)
+- Fragmentation/reassembly
+- RPL routing (optional)
+- TUN interface to Linux
+- Uses `TX_RAW_FRAME` / `RX_FRAME` CBOR commands
+
+## Option B: Contiki-NG Native Border Router (Modified)
+Modify the native border router to speak CBOR. The 6LoWPAN stack runs on the host (native), radio node just does raw TX/RX.
+
+```
+Linux Host                           │  Radio Node
+─────────────────────────────────────┼────────────────
+ ┌─────────┐    ┌──────────────────┐ │   ┌──────────┐
+ │ tun0    │◄──►│ Contiki-NG       │ │   │ serial   │
+ │ (IPv6)  │    │ Native BR        │CBOR│   │ radio    │
+ └─────────┘    │ (6LoWPAN + RPL)  │◄──UART─►│ (raw     │
+                └──────────────────┘ │   │  802.15.4)│
+                                     │   └──────────┘
+```
+
+**The native border router already has:**
+- Full 6LoWPAN compression/fragmentation
+- RPL routing
+- TUN interface
+
+**Changes needed to native border router:**
+- Replace `slip-dev.c` raw SLIP with CBOR encode/decode
+- Add CRC16 wrapper
+- Map `!S` command → `TX_RAW_FRAME` CBOR
+- Map received frames → `RX_FRAME` CBOR events
+- Map `?M` query → `GET_MAC_ADDR` CBOR
+
+## Implementation Steps
+
+1. **Add MAC address query** - `GET_MAC_ADDR` / `MAC_ADDR_RESP`
+2. **Add PAN ID / short address config** - `SET_PAN_ID`, `SET_SHORT_ADDR`
+3. **Document frame format** - IEEE 802.15.4 frame structure expected
+4. **Python stack OR modified border router** - choose one to implement first
+5. **TUN interface integration** - bridge to Linux networking
+
+---
+
+# 9. Future Extensions
+- Multi-radio support
+- PHY mode switching
+- Time-synced measurements
+- Wi-SUN, BLE adv sniffer mode
+- Web-based packet decoder (IEEE 802.15.4 frame parsing)
+- Remote access (expose web interface beyond localhost)
+- Integration with Wireshark (ZEP protocol or pcap export)  

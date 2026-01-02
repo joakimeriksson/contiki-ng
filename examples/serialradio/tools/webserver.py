@@ -34,13 +34,13 @@ class SerialRadioWebServer:
     - Radio configuration and control
     """
 
-    def __init__(self, http_port: int = 8080, ws_port: int = 8081):
+    def __init__(self, http_port: int = 8080):
         """
         Initialize the serial radio web server.
 
         Args:
             http_port: Port for HTTP server (default 8080)
-            ws_port: Port for WebSocket server (default 8081)
+                       WebSocket port is automatically http_port + 1
         """
         if not WEBSOCKETS_AVAILABLE:
             raise ImportError(
@@ -51,7 +51,7 @@ class SerialRadioWebServer:
         self._command_handler: Optional[Callable[[str, dict], None]] = None
 
         self.http_port = http_port
-        self.ws_port = ws_port
+        self.ws_port = http_port + 1  # WebSocket is always HTTP port + 1
 
         self._running = False
         self._http_thread: Optional[threading.Thread] = None
@@ -110,22 +110,32 @@ class SerialRadioWebServer:
 
     def _run_http_server(self):
         """Run HTTP server in background."""
-        # Change to www directory for serving files
-        os.chdir(self._www_dir)
+        www_dir = str(self._www_dir)
 
-        handler = SimpleHTTPRequestHandler
-        handler.extensions_map.update({
+        # Custom handler that serves from www directory without changing cwd
+        class Handler(SimpleHTTPRequestHandler):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, directory=www_dir, **kwargs)
+
+            def log_message(self, format, *args):
+                # Suppress HTTP access logs
+                pass
+
+        Handler.extensions_map.update({
             '.js': 'application/javascript',
             '.css': 'text/css',
         })
 
         try:
-            server = HTTPServer(('', self.http_port), handler)
+            server = HTTPServer(('', self.http_port), Handler)
+            print(f"HTTP server listening on port {self.http_port}")
             while self._running:
                 server.handle_request()
         except Exception as e:
             if self._running:
                 print(f"HTTP server error: {e}")
+                import traceback
+                traceback.print_exc()
 
     def _run_ws_server(self):
         """Run WebSocket server in background."""
@@ -137,12 +147,21 @@ class SerialRadioWebServer:
         except Exception as e:
             if self._running:
                 print(f"WebSocket server error: {e}")
+                import traceback
+                traceback.print_exc()
 
     async def _ws_main(self):
         """Main WebSocket server coroutine."""
-        async with websocket_serve(self._ws_handler, "localhost", self.ws_port):
-            while self._running:
-                await asyncio.sleep(0.1)
+        try:
+            # Bind to all interfaces so it works from browser
+            async with websocket_serve(self._ws_handler, "0.0.0.0", self.ws_port):
+                print(f"WebSocket server listening on port {self.ws_port}")
+                while self._running:
+                    await asyncio.sleep(0.1)
+        except Exception as e:
+            print(f"WebSocket serve error: {e}")
+            import traceback
+            traceback.print_exc()
 
     async def _ws_handler(self, websocket):
         """Handle WebSocket client connection."""

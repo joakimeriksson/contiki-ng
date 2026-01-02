@@ -623,11 +623,11 @@ class SerialRadioCLI(cmd.Cmd):
         Start/stop web-based spectrum visualization server.
 
         Usage:
-            webserver start [http_port] [ws_port]  - Start web server
-            webserver stop                          - Stop web server
-            webserver status                        - Show server status
+            webserver start [http_port]  - Start web server
+            webserver stop               - Stop web server
+            webserver status             - Show server status
 
-        Default ports: HTTP=8080, WebSocket=8081
+        Default port: HTTP=8080 (WebSocket is automatically HTTP+1)
 
         The web interface provides:
         - Real-time 2D spectrum bar chart
@@ -647,7 +647,7 @@ class SerialRadioCLI(cmd.Cmd):
 
         args = arg.split()
         if not args:
-            print("Usage: webserver start [http_port] [ws_port] | stop | status")
+            print("Usage: webserver start [http_port] | stop | status")
             return
 
         cmd = args[0].lower()
@@ -658,17 +658,17 @@ class SerialRadioCLI(cmd.Cmd):
                 return
 
             http_port = 8080
-            ws_port = 8081
 
             if len(args) > 1:
                 http_port = int(args[1])
-            if len(args) > 2:
-                ws_port = int(args[2])
 
             try:
-                self._webserver = SerialRadioWebServer(http_port, ws_port)
+                self._webserver = SerialRadioWebServer(http_port)
                 self._webserver.set_command_handler(self._handle_web_command)
                 self._webserver.start()
+
+                # Enable debug callback to stream to web clients
+                self.radio.set_debug_callback(self._debug_callback)
 
                 # Send initial radio info
                 info = self.radio.get_radio_info()
@@ -677,6 +677,7 @@ class SerialRadioCLI(cmd.Cmd):
 
                 print(f"\nOpen http://localhost:{http_port}/ in your browser")
                 print("Use 'fastscan start' to begin streaming spectrum data")
+                print("Debug output is now streaming to web clients")
 
             except Exception as e:
                 print(f"Failed to start web server: {e}")
@@ -699,65 +700,40 @@ class SerialRadioCLI(cmd.Cmd):
                 print("Web server: STOPPED")
 
         else:
-            print("Usage: webserver start [http_port] [ws_port] | stop | status")
+            print("Usage: webserver start [http_port] | stop | status")
 
     def _handle_web_command(self, cmd: str, params: dict) -> any:
-        """Handle commands from web UI."""
-        if cmd == 'fastscan_start':
-            start_ch = params.get('start_ch', 0)
-            end_ch = params.get('end_ch', 33)
-            self.radio.set_fast_scan_callback(self._fast_scan_callback)
-            self.radio.start_fast_scan(start_ch, end_ch)
-            return {'status': 'started', 'start_ch': start_ch, 'end_ch': end_ch}
+        """Handle commands from web UI - all commands go through CLI."""
+        if cmd == 'cli_command':
+            # Execute arbitrary CLI command and capture output
+            cli_text = params.get('text', '').strip()
+            if not cli_text:
+                return {'error': 'missing text parameter'}
 
-        elif cmd == 'fastscan_stop':
-            self.radio.stop_fast_scan()
-            self.radio.set_fast_scan_callback(None)
-            return {'status': 'stopped'}
+            import io
+            import sys
 
-        elif cmd == 'sniff_start':
-            self._sniffing = True
-            self.radio.set_rx_callback(self._rx_callback)
-            return {'status': 'started'}
-
-        elif cmd == 'sniff_stop':
-            self._sniffing = False
-            self.radio.set_rx_callback(None)
-            return {'status': 'stopped'}
-
-        elif cmd == 'set_channel':
-            channel = params.get('channel')
-            if channel is not None:
-                success = self.radio.set_channel(int(channel))
-                return {'success': success, 'channel': channel}
-            return {'error': 'missing channel parameter'}
-
-        elif cmd == 'set_power':
-            power = params.get('power')
-            if power is not None:
-                success = self.radio.set_tx_power(int(power))
-                return {'success': success, 'power': power}
-            return {'error': 'missing power parameter'}
-
-        elif cmd == 'get_info':
-            info = self.radio.get_radio_info()
-            if self._webserver:
-                self._webserver.broadcast_radio_info(info)
-            return info
-
-        elif cmd == 'ping':
-            success = self.radio.ping()
-            return {'success': success, 'version': self.radio.version}
-
-        elif cmd == 'jam_start':
-            channel = params.get('channel', 26)
-            interval_ms = params.get('interval_ms', 5)
-            self.radio.start_jam(channel, interval_ms)
-            return {'status': 'started', 'channel': channel, 'interval_ms': interval_ms}
-
-        elif cmd == 'jam_stop':
-            self.radio.stop_jam()
-            return {'status': 'stopped'}
+            # Need to capture both self.stdout (used by help) and sys.stdout (used by print)
+            output = io.StringIO()
+            old_self_stdout = self.stdout
+            old_sys_stdout = sys.stdout
+            try:
+                self.stdout = output
+                sys.stdout = output
+                # Force flush before command
+                self.onecmd(cli_text)
+                # Get output and flush
+                output.flush()
+                result = output.getvalue()
+                # Debug: print to original stdout
+                old_sys_stdout.write(f"[WEB CMD] '{cli_text}' -> {len(result)} chars\n")
+                old_sys_stdout.flush()
+                return {'output': result if result else '(command executed)', 'command': cli_text}
+            except Exception as e:
+                return {'error': str(e), 'command': cli_text}
+            finally:
+                self.stdout = old_self_stdout
+                sys.stdout = old_sys_stdout
 
         else:
             return {'error': f'unknown command: {cmd}'}
@@ -785,9 +761,14 @@ class SerialRadioCLI(cmd.Cmd):
 
     def _debug_callback(self, text: str):
         """Handle debug text from device."""
+        import time
+        timestamp = time.time()
         for line in text.strip().split('\n'):
             if line:
                 print(f"[DBG] {line}")
+        # Broadcast to web clients if webserver is running
+        if self._webserver and text.strip():
+            self._webserver.broadcast_debug(text, timestamp)
 
     # -------------------------------------------------------------------------
     # Heartbeat commands

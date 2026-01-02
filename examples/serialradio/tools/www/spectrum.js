@@ -19,8 +19,8 @@ class SpectrumAnalyzer {
         this.currentSpectrum = null;
 
         // Display settings
-        this.rssiMin = -130;
-        this.rssiMax = -50;
+        this.rssiMin = -120;
+        this.rssiMax = -20;
         this.viewMode = '2d';  // '2d' or '3d'
 
         // Stats
@@ -85,33 +85,76 @@ class SpectrumAnalyzer {
             }
         });
 
-        // Setup control buttons
+        // Setup control buttons - all send CLI commands
         document.getElementById('btnScanStart').addEventListener('click', () => {
-            this.sendCommand('fastscan_start', { start_ch: 0, end_ch: 33 });
+            const startCh = document.getElementById('scanStartCh').value;
+            const endCh = document.getElementById('scanEndCh').value;
+            this.sendCliText(`fastscan start ${startCh} ${endCh}`);
         });
         document.getElementById('btnScanStop').addEventListener('click', () => {
-            this.sendCommand('fastscan_stop');
+            this.sendCliText('fastscan stop');
         });
         document.getElementById('btnSniffStart').addEventListener('click', () => {
-            this.sendCommand('sniff_start');
+            this.sendCliText('sniff');
         });
         document.getElementById('btnSniffStop').addEventListener('click', () => {
-            this.sendCommand('sniff_stop');
+            this.sendCliText('sniff stop');
         });
         document.getElementById('btnSetChannel').addEventListener('click', () => {
             const ch = document.getElementById('channelInput').value;
-            this.sendCommand('set_channel', { channel: parseInt(ch) });
+            this.sendCliText(`channel ${ch}`);
         });
         document.getElementById('btnSetPower').addEventListener('click', () => {
             const pwr = document.getElementById('powerInput').value;
-            this.sendCommand('set_power', { power: parseInt(pwr) });
+            this.sendCliText(`power ${pwr}`);
         });
         document.getElementById('btnPing').addEventListener('click', () => {
-            this.sendCommand('ping');
+            this.sendCliText('ping');
         });
         document.getElementById('btnGetInfo').addEventListener('click', () => {
-            this.sendCommand('get_info');
+            this.sendCliText('info');
         });
+
+        // CLI command input
+        const cliInput = document.getElementById('cliInput');
+        const btnCliSend = document.getElementById('btnCliSend');
+
+        if (cliInput && btnCliSend) {
+            // Command history
+            this.cliHistory = [];
+            this.cliHistoryIndex = -1;
+
+            btnCliSend.addEventListener('click', () => this.sendCliCommand());
+            cliInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    this.sendCliCommand();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (this.cliHistoryIndex < this.cliHistory.length - 1) {
+                        this.cliHistoryIndex++;
+                        cliInput.value = this.cliHistory[this.cliHistory.length - 1 - this.cliHistoryIndex];
+                    }
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (this.cliHistoryIndex > 0) {
+                        this.cliHistoryIndex--;
+                        cliInput.value = this.cliHistory[this.cliHistory.length - 1 - this.cliHistoryIndex];
+                    } else if (this.cliHistoryIndex === 0) {
+                        this.cliHistoryIndex = -1;
+                        cliInput.value = '';
+                    }
+                }
+            });
+        }
+
+        // Console clear button
+        const btnClearConsole = document.getElementById('btnClearConsole');
+        if (btnClearConsole) {
+            btnClearConsole.addEventListener('click', () => {
+                const container = document.getElementById('consoleOutput');
+                container.innerHTML = '<span style="color: #666;">Console cleared</span>';
+            });
+        }
 
         // Connect WebSocket
         this.connectWebSocket();
@@ -119,12 +162,24 @@ class SpectrumAnalyzer {
         // Start render loop
         this.render();
 
-        // Update rate counter
+        // Update rate counters
         setInterval(() => this.updateScanRate(), 1000);
+        setInterval(() => this.updatePacketRate(), 1000);
+    }
+
+    updatePacketRate() {
+        const rateEl = document.getElementById('packetRate');
+        if (rateEl) {
+            rateEl.textContent = (this.packetRateCounter || 0) + '/s';
+        }
+        this.packetRateCounter = 0;
     }
 
     connectWebSocket() {
-        const wsUrl = `ws://localhost:8081/`;
+        // Derive WebSocket port from HTTP port (HTTP port + 1)
+        const httpPort = parseInt(window.location.port) || 8080;
+        const wsPort = httpPort + 1;
+        const wsUrl = `ws://${window.location.hostname}:${wsPort}/`;
         console.log('Connecting to', wsUrl);
 
         try {
@@ -177,6 +232,9 @@ class SpectrumAnalyzer {
             case 'command_result':
                 this.handleCommandResult(data);
                 break;
+            case 'debug':
+                this.handleDebug(data);
+                break;
         }
     }
 
@@ -192,11 +250,52 @@ class SpectrumAnalyzer {
         }
     }
 
-    handleCommandResult(data) {
-        console.log(`Command '${data.cmd}' result:`, data.success ? data.result : data.error);
-        if (data.cmd === 'ping' && data.success) {
-            alert(`Ping successful! Version: ${data.result.version}`);
+    sendCliText(text) {
+        // Log to console
+        const container = document.getElementById('consoleOutput');
+        if (container) {
+            this.clearConsolePlaceholder(container);
+            const cmdDiv = document.createElement('div');
+            cmdDiv.className = 'command-echo';
+            cmdDiv.textContent = '> ' + text;
+            container.appendChild(cmdDiv);
+            this.trimAndScrollConsole(container);
         }
+        // Send as cli_command
+        this.sendCommand('cli_command', { text: text });
+    }
+
+    sendCliCommand() {
+        const input = document.getElementById('cliInput');
+        const text = input.value.trim();
+        if (!text) return;
+
+        // Add to history
+        this.cliHistory.push(text);
+        this.cliHistoryIndex = -1;
+
+        // Clear input
+        input.value = '';
+
+        // Send via sendCliText
+        this.sendCliText(text);
+    }
+
+    handleCommandResult(data) {
+        console.log(`Command result:`, data.success ? data.result : data.error);
+        const container = document.getElementById('consoleOutput');
+        if (!container) return;
+
+        const resultDiv = document.createElement('div');
+        if (data.success && data.result) {
+            resultDiv.className = 'command-result';
+            resultDiv.textContent = data.result.output || '(no output)';
+        } else if (data.error) {
+            resultDiv.className = 'command-error';
+            resultDiv.textContent = 'Error: ' + data.error;
+        }
+        container.appendChild(resultDiv);
+        this.trimAndScrollConsole(container);
     }
 
     handleSpectrum(data) {
@@ -284,11 +383,71 @@ class SpectrumAnalyzer {
         while (container.children.length > 50) {
             container.removeChild(container.lastChild);
         }
+
+        // Update packet count
+        this.packetCount = (this.packetCount || 0) + 1;
+        this.packetRateCounter = (this.packetRateCounter || 0) + 1;
+        const countEl = document.getElementById('packetCount');
+        if (countEl) countEl.textContent = this.packetCount;
     }
 
     handleHeartbeat(data) {
         // Could add heartbeat indicator or uptime display
         console.log(`Heartbeat: seq=${data.seq} uptime=${data.uptime}s`);
+    }
+
+    handleDebug(data) {
+        const container = document.getElementById('consoleOutput');
+        if (!container) return;
+
+        this.clearConsolePlaceholder(container);
+
+        // Parse and add each line
+        const lines = data.text.split('\n').filter(line => line.trim());
+        for (const line of lines) {
+            const div = document.createElement('div');
+            div.className = 'debug-line';
+
+            // Color based on content
+            if (line.includes('[INFO') || line.includes('INFO:')) {
+                div.classList.add('info');
+            } else if (line.includes('[WARN') || line.includes('WARN:')) {
+                div.classList.add('warn');
+            } else if (line.includes('[ERR') || line.includes('ERROR:')) {
+                div.classList.add('error');
+            }
+
+            // Format timestamp
+            const time = new Date(data.timestamp * 1000).toLocaleTimeString();
+            div.innerHTML = `<span class="timestamp">[${time}]</span>${this.escapeHtml(line)}`;
+
+            container.appendChild(div);
+        }
+
+        this.trimAndScrollConsole(container);
+    }
+
+    clearConsolePlaceholder(container) {
+        const placeholder = container.querySelector('span');
+        if (placeholder && (placeholder.textContent.includes('Waiting') || placeholder.textContent.includes('cleared'))) {
+            container.innerHTML = '';
+        }
+    }
+
+    trimAndScrollConsole(container) {
+        // Auto-scroll to bottom
+        container.scrollTop = container.scrollHeight;
+
+        // Limit to 500 lines
+        while (container.children.length > 500) {
+            container.removeChild(container.firstChild);
+        }
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     updateConnectionStatus() {
@@ -429,6 +588,9 @@ class SpectrumAnalyzer {
         directionalLight.position.set(0, -50, 50);
         this.threeScene.add(directionalLight);
 
+        // Add axes
+        this.createAxes();
+
         // Mouse controls - simple orbit around Z axis
         this.threeIsDragging = false;
         this.threeLastMouse = { x: 0, y: 0 };
@@ -481,6 +643,83 @@ class SpectrumAnalyzer {
         this.threeCamera.position.y = -this.cameraDistance * Math.cos(this.cameraAngle);
         this.threeCamera.position.z = this.cameraHeight;
         this.threeCamera.lookAt(0, 0, 0);
+    }
+
+    createAxes() {
+        const axisColor = 0x888888;
+        const axisMaterial = new THREE.LineBasicMaterial({ color: axisColor });
+
+        // X axis (channels) - at front bottom, red tint
+        const xGeom = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(-25, -20, -10),
+            new THREE.Vector3(25, -20, -10)
+        ]);
+        const xAxis = new THREE.Line(xGeom, new THREE.LineBasicMaterial({ color: 0xff6666 }));
+        this.threeScene.add(xAxis);
+
+        // Y axis (time) - on left side, green tint
+        const yGeom = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(-25, -20, -10),
+            new THREE.Vector3(-25, 20, -10)
+        ]);
+        const yAxis = new THREE.Line(yGeom, new THREE.LineBasicMaterial({ color: 0x66ff66 }));
+        this.threeScene.add(yAxis);
+
+        // Z axis (RSSI) - at back left corner, blue tint
+        const zGeom = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(-25, 20, -10),
+            new THREE.Vector3(-25, 20, 20)
+        ]);
+        const zAxis = new THREE.Line(zGeom, new THREE.LineBasicMaterial({ color: 0x6666ff }));
+        this.threeScene.add(zAxis);
+
+        // Add tick marks on X axis (channels) - at front bottom
+        const tickPositions = [-25, -12.5, 0, 12.5, 25];
+        for (let i = 0; i < tickPositions.length; i++) {
+            const x = tickPositions[i];
+            const tickGeom = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(x, -20, -10),
+                new THREE.Vector3(x, -22, -10)
+            ]);
+            const tick = new THREE.Line(tickGeom, axisMaterial);
+            this.threeScene.add(tick);
+        }
+
+        // Add tick marks on Z axis (RSSI) - at back
+        for (let i = -10; i <= 20; i += 10) {
+            const tickGeom = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(-25, 20, i),
+                new THREE.Vector3(-23, 20, i)
+            ]);
+            const tick = new THREE.Line(tickGeom, axisMaterial);
+            this.threeScene.add(tick);
+        }
+
+        // Create text labels using sprites
+        this.createTextSprite('Channel', 0, -28, -10, 0xff6666);
+        this.createTextSprite('Time', -30, 0, -12, 0x66ff66);
+        this.createTextSprite('RSSI', -30, 22, 10, 0x6666ff);
+    }
+
+    createTextSprite(text, x, y, z, color) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 128;
+        canvas.height = 32;
+
+        ctx.fillStyle = '#' + color.toString(16).padStart(6, '0');
+        ctx.font = 'bold 18px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(text, 64, 22);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+        const sprite = new THREE.Sprite(spriteMaterial);
+        sprite.position.set(x, y, z);
+        sprite.scale.set(12, 3, 1);
+        sprite.userData = { canvas, ctx, color };  // Store for updates
+        this.threeScene.add(sprite);
+        return sprite;
     }
 
     rssiToHeight(rssi) {
