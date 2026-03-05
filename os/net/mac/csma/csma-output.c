@@ -237,6 +237,9 @@ send_one_packet(struct neighbor_queue *n, struct packet_queue *q)
           }
         }
         break;
+      case RADIO_TX_NOACK:
+        ret = MAC_TX_NOACK;
+        break;
       case RADIO_TX_COLLISION:
         ret = MAC_TX_COLLISION;
         break;
