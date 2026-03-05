@@ -16,6 +16,11 @@
 #define QUEUEBUF_CONF_NUM 4
 #endif
 
+/* nrf_802154 resolves ACK status in the radio driver. */
+#ifndef CSMA_CONF_TX_OK_ACKED
+#define CSMA_CONF_TX_OK_ACKED 1
+#endif
+
 /* Disable watchdog until properly tested on nRF54L15 */
 #ifndef WATCHDOG_CONF_ENABLE
 #define WATCHDOG_CONF_ENABLE 0

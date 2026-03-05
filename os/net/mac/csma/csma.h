@@ -75,6 +75,12 @@
 #define CSMA_AFTER_ACK_DETECTED_WAIT_TIME       RTIMER_SECOND / 1500
 #endif /* CSMA_CONF_AFTER_ACK_DETECTED_WAIT_TIME */
 
+#ifdef CSMA_CONF_TX_OK_ACKED
+#define CSMA_TX_OK_ACKED CSMA_CONF_TX_OK_ACKED
+#else /* CSMA_CONF_TX_OK_ACKED */
+#define CSMA_TX_OK_ACKED 0
+#endif /* CSMA_CONF_TX_OK_ACKED */
+
 #define CSMA_ACK_LEN 3
 
 /* just a default - with LLSEC, etc */

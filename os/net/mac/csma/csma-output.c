@@ -208,6 +208,8 @@ send_one_packet(struct neighbor_queue *n, struct packet_queue *q)
       case RADIO_TX_OK:
         if(is_broadcast) {
           ret = MAC_TX_OK;
+        } else if(CSMA_TX_OK_ACKED) {
+          ret = MAC_TX_OK;
         } else {
           /* Check for ack */
 

@@ -33,6 +33,7 @@
 /* IEEE 802.15.4 constants */
 #define MAX_PAYLOAD_LEN 125 /* 127 - FCS(2) */
 #define ACK_LEN         5
+#define FRAME_ACK_REQUEST_BIT 0x20
 
 /* Default radio parameters */
 #define DEFAULT_CHANNEL     26
@@ -522,7 +523,12 @@ void
 nrf_802154_transmitted_raw(uint8_t *p_frame,
                            const nrf_802154_transmit_done_metadata_t *p_metadata)
 {
-  (void)p_frame;
+  bool ack_requested = false;
+
+  if(p_frame != NULL) {
+    /* p_frame[0] is PHR, p_frame[1] is FCF byte 0. */
+    ack_requested = (p_frame[1] & FRAME_ACK_REQUEST_BIT) != 0;
+  }
 
   if(p_metadata->data.transmitted.p_ack != NULL) {
     uint8_t *ack = p_metadata->data.transmitted.p_ack;
@@ -532,9 +538,14 @@ nrf_802154_transmitted_raw(uint8_t *p_frame,
 
     /* Free the ACK buffer back to nrf_802154. */
     nrf_802154_buffer_free_raw(ack);
+    tx_success = true;
+  } else if(ack_requested) {
+    tx_error = NRF_802154_TX_ERROR_NO_ACK;
+    tx_success = false;
+  } else {
+    tx_success = true;
   }
 
-  tx_success = true;
   tx_done = true;
   __SEV();
 }
