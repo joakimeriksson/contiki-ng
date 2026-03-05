@@ -85,14 +85,11 @@ uarte_write(unsigned char data)
   if(!is_initialized) {
     return;
   }
+  static uint8_t tx_byte;
+  tx_byte = data;
   do {
-  } while(nrfx_uarte_tx_in_progress(&instance));
-#if defined(NRF54L15_XXAA)
-  /* v3.x API requires flags parameter */
-  nrfx_uarte_tx(&instance, &data, sizeof(data), 0);
-#else
-  nrfx_uarte_tx(&instance, &data, sizeof(data));
-#endif
+  } while(nrfx_uarte_tx(&instance, &tx_byte, 1, NRFX_UARTE_TX_BLOCKING)
+          == NRFX_ERROR_BUSY);
 }
 /*---------------------------------------------------------------------------*/
 /**

@@ -156,13 +156,19 @@ _NVIC_SetPendingIRQ(IRQn_Type irq_number)
 }
 /**
  * @brief Macro for entering into a critical section.
+ *
+ * Uses PRIMASK save/restore to support proper nesting.  The original
+ * __disable_irq()/__enable_irq() pair was non-nesting: EXIT would
+ * unconditionally re-enable interrupts even if the caller had already
+ * disabled them, breaking e.g. the nrf_802154 radio driver's own
+ * critical sections.
  */
-#define NRFX_CRITICAL_SECTION_ENTER()   __disable_irq()
+#define NRFX_CRITICAL_SECTION_ENTER()  { uint32_t _nrfx_pm = __get_PRIMASK(); __disable_irq()
 
 /**
  * @brief Macro for exiting from a critical section.
  */
-#define NRFX_CRITICAL_SECTION_EXIT()    __enable_irq()
+#define NRFX_CRITICAL_SECTION_EXIT()   __set_PRIMASK(_nrfx_pm); }
 
 /*------------------------------------------------------------------------------ */
 
@@ -196,6 +202,17 @@ _NVIC_SetPendingIRQ(IRQn_Type irq_number)
  */
 #define NRFX_ATOMIC_FETCH_AND(p_data, value) nrfx_atomic_u32_fetch_and(p_data, value)
 #define NRFX_ATOMIC_FETCH_OR(p_data, value)  nrfx_atomic_u32_fetch_or(p_data, value)
+
+/*------------------------------------------------------------------------------ */
+
+/* Standard MIN/MAX macros needed by nrf_802154_core.c (normally provided by
+ * the Zephyr SDK sys/util.h; we supply them here for bare-metal builds). */
+#ifndef MAX
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#endif
+#ifndef MIN
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#endif
 
 /*------------------------------------------------------------------------------ */
 

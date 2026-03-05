@@ -141,6 +141,16 @@ SECTIONS
         __bss_end__ = .;
     } > RAM
     
+    /* .noinit section is not zeroed by the startup code -- data survives
+     * soft resets (NVIC_SystemReset).  Used by the hardfault handler to
+     * pass crash info across reboot. */
+    .noinit (NOLOAD) :
+    {
+        . = ALIGN(4);
+        KEEP(*(.noinit*))
+        . = ALIGN(4);
+    } > RAM
+
     .heap (COPY):
     {
         __HeapBase = .;

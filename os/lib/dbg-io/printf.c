@@ -39,8 +39,9 @@
 static strformat_result
 write_str(void *user_data, const char *data, unsigned int len)
 {
-  if(len > 0) {
-    dbg_send_bytes((unsigned char *)data, len);
+  unsigned int i;
+  for(i = 0; i < len; i++) {
+    dbg_putchar(data[i]);
   }
   return STRFORMAT_OK;
 }

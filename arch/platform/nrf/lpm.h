@@ -47,6 +47,8 @@
 /**
  * @brief Stop and wait for an interrupt
  */
+extern void clock_arch_check_and_recover(void);
+
 static inline void
 lpm_drop(void)
 {
@@ -56,10 +58,13 @@ lpm_drop(void)
   abort = process_nevents();
   if(!abort) {
     ENERGEST_SWITCH(ENERGEST_TYPE_CPU, ENERGEST_TYPE_LPM);
-    __WFI();
+    /* NOP loop instead of WFI: after soft-reset, GRTC interrupts may not
+     * wake the CPU from WFI.  TODO: investigate WFI + GRTC after SREQ. */
+    for(volatile int _i = 0; _i < 1000; _i++) { __NOP(); }
     ENERGEST_SWITCH(ENERGEST_TYPE_LPM, ENERGEST_TYPE_CPU);
   }
   critical_exit(status);
+  clock_arch_check_and_recover();
 }
 /*---------------------------------------------------------------------------*/
 #endif /* LPM_H */

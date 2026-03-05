@@ -7,13 +7,13 @@
 #ifndef NRF54L15_CONF_H_
 #define NRF54L15_CONF_H_
 
-/* Disable networking until radio driver is fully ported */
+/* Enable IPv6 networking -- nrf_802154 radio driver is now integrated */
 #ifndef NETSTACK_CONF_WITH_IPV6
-#define NETSTACK_CONF_WITH_IPV6 0
+#define NETSTACK_CONF_WITH_IPV6 1
 #endif
 
 #ifndef QUEUEBUF_CONF_NUM
-#define QUEUEBUF_CONF_NUM 0
+#define QUEUEBUF_CONF_NUM 4
 #endif
 
 /* Disable watchdog until properly tested on nRF54L15 */
@@ -21,5 +21,9 @@
 #define WATCHDOG_CONF_ENABLE 0
 #endif
 
+/* Enable extended HardFault handler with register dump. */
+#ifndef NRF_CONF_HARDFAULT_HANDLER_EXTENDED
+#define NRF_CONF_HARDFAULT_HANDLER_EXTENDED 1
+#endif
 
 #endif /* NRF54L15_CONF_H_ */

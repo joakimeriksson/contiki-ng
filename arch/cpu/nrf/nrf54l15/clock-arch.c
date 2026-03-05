@@ -39,6 +39,9 @@ static volatile uint32_t schedule_failure_count;
 static nrfx_err_t init_error_code;
 volatile uint8_t tick_channel_id;
 static volatile uint32_t grtc_irq_count;
+static volatile uint32_t ccen_fix_count;
+static volatile uint64_t last_tick_syscounter;
+static volatile uint32_t recover_count;
 
 static void schedule_next_tick(void);
 
@@ -55,10 +58,10 @@ static void
 grtc_tick_handler(int32_t id, uint64_t cc_value, void *context)
 {
   (void)id;
-  (void)cc_value;
   (void)context;
 
   grtc_irq_count++;
+  last_tick_syscounter = cc_value;
   clock_update();
   schedule_next_tick();
 }
@@ -85,6 +88,16 @@ schedule_next_tick(void)
 
   if(err != NRFX_SUCCESS) {
     schedule_failure_count++;
+  }
+
+  /* Defensive: ensure CCEN is active after scheduling.
+   * On nRF54L15, cc_channel_prepare() disables CCEN and the CCADD write
+   * should auto-enable it, but verify and fix if needed. */
+  if(NRF_GRTC->CC[tick_channel_id].CCEN !=
+     (GRTC_CC_CCEN_ACTIVE_Enable << GRTC_CC_CCEN_ACTIVE_Pos)) {
+    NRF_GRTC->CC[tick_channel_id].CCEN =
+      (GRTC_CC_CCEN_ACTIVE_Enable << GRTC_CC_CCEN_ACTIVE_Pos);
+    ccen_fix_count++;
   }
 }
 
@@ -231,9 +244,32 @@ clock_arch_get_tick_interval_us(void)
 uint64_t
 clock_arch_get_syscounter(void)
 {
-  uint64_t now = 0;
-  nrfx_grtc_syscounter_get(&now);
-  return now;
+  /* Read from the "active" domain (SYSCOUNTER[1]) to avoid the busy-wait
+   * retry loop in nrfx_grtc_syscounter_get() which can deadlock. */
+  uint32_t hi, lo;
+  do {
+    hi = NRF_GRTC->SYSCOUNTER[1].SYSCOUNTERH;
+    lo = NRF_GRTC->SYSCOUNTER[1].SYSCOUNTERL;
+  } while(hi != NRF_GRTC->SYSCOUNTER[1].SYSCOUNTERH);
+  return ((uint64_t)(hi & 0x001FFFFFUL) << 32) | lo;
+}
+
+uint32_t
+clock_arch_get_ccen_fix_count(void)
+{
+  return ccen_fix_count;
+}
+
+uint32_t
+clock_arch_get_grtc_inten(void)
+{
+  return NRF_GRTC->INTENSET2;
+}
+
+uint32_t
+clock_arch_get_grtc_ccen(void)
+{
+  return NRF_GRTC->CC[tick_channel_id].CCEN;
 }
 
 bool
@@ -247,6 +283,35 @@ clock_arch_get_init_error(void)
 {
   return init_error_code;
 }
+void
+clock_arch_check_and_recover(void)
+{
+  static clock_time_t last_check_ticks;
+  static uint32_t idle_count;
+
+  if(!is_initialized) {
+    return;
+  }
+
+  clock_time_t current = ticks;
+
+  if(current != last_check_ticks) {
+    last_check_ticks = current;
+    idle_count = 0;
+    return;
+  }
+
+  idle_count++;
+
+  if(idle_count > 5000) {
+    recover_count++;
+    idle_count = 0;
+
+    /* Try to force-reschedule */
+    schedule_next_tick();
+  }
+}
+
 static void
 wait_for_lfclk_ready(void)
 {

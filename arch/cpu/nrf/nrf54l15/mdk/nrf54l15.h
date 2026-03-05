@@ -166,7 +166,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 #ifndef RADIO_IRQn
-#define RADIO_IRQn RADIO_1_IRQn
+#define RADIO_IRQn RADIO_0_IRQn
 #endif
 
 #ifdef __cplusplus
