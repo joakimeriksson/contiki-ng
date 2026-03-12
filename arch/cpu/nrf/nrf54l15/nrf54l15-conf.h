@@ -21,6 +21,10 @@
 #define CSMA_CONF_TX_OK_ACKED 1
 #endif
 
+#ifndef LOG_CONF_LEVEL_RADIO
+#define LOG_CONF_LEVEL_RADIO LOG_LEVEL_WARN
+#endif
+
 /* Disable watchdog until properly tested on nRF54L15 */
 #ifndef WATCHDOG_CONF_ENABLE
 #define WATCHDOG_CONF_ENABLE 0

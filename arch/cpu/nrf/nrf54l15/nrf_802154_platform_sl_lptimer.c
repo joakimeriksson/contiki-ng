@@ -24,7 +24,7 @@
 #include <stdint.h>
 
 /*---------------------------------------------------------------------------*/
-/* Non-blocking SYSCOUNTER read from the "active" domain (SYSCOUNTER[1]).
+/* Non-blocking SYSCOUNTER read from the active GRTC interrupt group.
  *
  * The standard nrfx_grtc_syscounter_get() reads from SYSCOUNTER[0] (the
  * "powered" domain) which requires cross-domain synchronization.  The HAL
@@ -32,18 +32,18 @@
  * states the wait can be unbounded — a deadlock when called with interrupts
  * disabled.
  *
- * SYSCOUNTER[1] is the "active" domain — directly readable when the CPU is
- * running (we always call nrfx_grtc_active_request_set(true) at init).  No
- * BUSY flag, no retry loop.
+ * On nRF54L15 application core the secure build uses GRTC group 2 and the
+ * non-secure build uses group 1. The active group is directly readable while
+ * the local CPU is running. No BUSY polling is needed here.
  */
 static inline uint64_t
 grtc_syscounter_read_active(void)
 {
   uint32_t hi, lo;
   do {
-    hi = NRF_GRTC->SYSCOUNTER[1].SYSCOUNTERH;
-    lo = NRF_GRTC->SYSCOUNTER[1].SYSCOUNTERL;
-  } while(hi != NRF_GRTC->SYSCOUNTER[1].SYSCOUNTERH);
+    hi = NRF_GRTC->SYSCOUNTER[GRTC_IRQ_GROUP].SYSCOUNTERH;
+    lo = NRF_GRTC->SYSCOUNTER[GRTC_IRQ_GROUP].SYSCOUNTERL;
+  } while(hi != NRF_GRTC->SYSCOUNTER[GRTC_IRQ_GROUP].SYSCOUNTERH);
   return ((uint64_t)(hi & 0x001FFFFFUL) << 32) | lo;
 }
 /*---------------------------------------------------------------------------*/

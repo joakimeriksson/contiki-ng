@@ -75,12 +75,23 @@ POSSIBILITY OF SUCH DAMAGE.
 #define NRF_SUBSCRIBE_PUBLISH_ENABLE (1UL << 31)
 #endif
 
-/* Define GRTC compatibility macros for the application domain */
+/* Define GRTC compatibility macros for the application domain. In the
+ * TrustZone split, non-secure runs on interrupt/syscounter group 1 while the
+ * secure world keeps group 2 for radio-side timing.
+ */
 #ifndef GRTC_IRQn
+#if defined(NRF_TRUSTZONE_NONSECURE)
+#define GRTC_IRQn GRTC_1_IRQn
+#else
 #define GRTC_IRQn GRTC_2_IRQn
 #endif
+#endif
 #ifndef GRTC_IRQ_GROUP
+#if defined(NRF_TRUSTZONE_NONSECURE)
+#define GRTC_IRQ_GROUP 1
+#else
 #define GRTC_IRQ_GROUP 2
+#endif
 #endif
 
 #include "nrf54l15_types.h"

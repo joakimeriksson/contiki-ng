@@ -61,6 +61,10 @@
 #define LOG_MODULE "NRF"
 #define LOG_LEVEL LOG_LEVEL_MAIN
 /*---------------------------------------------------------------------------*/
+#if NRF_HARDFAULT_HANDLER_EXTENDED
+void hardfault_print_saved_crash(void);
+#endif
+/*---------------------------------------------------------------------------*/
 void
 platform_init_stage_one(void)
 {
@@ -81,6 +85,9 @@ platform_init_stage_two(void)
    * so initialize in the secure mode. */
 #if NRF_HAS_UARTE && !defined(NRF_TRUSTZONE_NONSECURE)
   uarte_init();
+#if NRF_HARDFAULT_HANDLER_EXTENDED
+  hardfault_print_saved_crash();
+#endif
 #endif /* NRF_HAS_UARTE */
 
 #if NRF_HAS_USB && defined(NRF_NATIVE_USB) && NRF_NATIVE_USB == 1

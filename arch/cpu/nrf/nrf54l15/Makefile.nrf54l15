@@ -8,6 +8,7 @@ CPU_CORE     = cortex-m/cm33
 NRF54L15_MDK_DIR := $(CONTIKI_CPU)/nrf54l15/mdk
 
 CFLAGS += -DNRF54L15_XXAA
+CFLAGS += -DNRF_CONFIG_CPU_FREQ_MHZ=128
 CFLAGS += -DNRF_APPLICATION
 CFLAGS += -DCPU_CONF_PATH=\"nrf54l15-conf.h\"
 CFLAGS += -DCPU_DEF_PATH=\"nrf54l15-def.h\"
@@ -36,12 +37,63 @@ EXTERNALDIRS += $(NRFX_ROOT)/mdk
 NRFX_C_SRCS   += $(NRF54L15_MDK_SRCS)
 NRFX_ASM_SRCS += $(NRF54L15_MDK_ASM_SRCS)
 
+TZ_MDK_DIR := $(CONTIKI_CPU)/nrf54l15/tz-mdk
+
+ifeq ($(TRUSTZONE_SECURE_BUILD),1)
+LDSCRIPT ?= $(TZ_MDK_DIR)/nrf54l15_xxaa_application_s.ld
+CFLAGS += -DNRF_SKIP_SAU_CONFIGURATION
+CFLAGS += -DNRF_SECURE=1
+CFLAGS += -DNRFX_GRTC_CONFIG_ALLOWED_CC_CHANNELS_MASK=0x00000038
+CFLAGS += -DNRFX_GRTC_CONFIG_NUM_OF_CC_CHANNELS=3
+else ifeq ($(TRUSTZONE_SECURE_BUILD),0)
+LDSCRIPT ?= $(TZ_MDK_DIR)/nrf54l15_xxaa_application_ns.ld
+CFLAGS += -DNRF_SKIP_CLOCK_CONFIGURATION
+CFLAGS += -DNRFX_GRTC_CONFIG_AUTOSTART=0
+CFLAGS += -DNRFX_GRTC_CONFIG_LFCLK_SELECT_AT_INIT=0
+CFLAGS += -DNRFX_GRTC_CONFIG_ALLOWED_CC_CHANNELS_MASK=0x00000007
+CFLAGS += -DNRFX_GRTC_CONFIG_NUM_OF_CC_CHANNELS=3
+else
 LDSCRIPT ?= $(NRF54L15_MDK_DIR)/nrf54l15_xxaa.ld
+endif
+
 LDFLAGS += -L$(NRF54L15_MDK_DIR)
+LDFLAGS += -L$(TZ_MDK_DIR)
 
 include $(CONTIKI)/$(CONTIKI_NG_CM33_DIR)/Makefile.cm33
 
 include $(CONTIKI_CPU)/Makefile.nrf
+
+CONTIKI_CPU_SOURCEFILES := $(filter-out watchdog-arch.c,$(CONTIKI_CPU_SOURCEFILES))
+CONTIKI_SOURCEFILES := $(filter-out watchdog-arch.c,$(CONTIKI_SOURCEFILES))
+NRFX_C_SRCS := $(filter-out $(NRFX_ROOT)/drivers/src/nrfx_wdt.c,$(NRFX_C_SRCS))
+CONTIKI_SOURCEFILES := $(filter-out nrfx_wdt.c,$(CONTIKI_SOURCEFILES))
+CFLAGS := $(filter-out -DNRFX_WDT_ENABLED,$(CFLAGS))
+CFLAGS := $(filter-out -DNRFX_WDT0_ENABLED,$(CFLAGS))
+CONTIKI_CPU_SOURCEFILES += watchdog-arch-stub.c
+CONTIKI_SOURCEFILES += watchdog-arch-stub.c
+
+ifeq ($(TRUSTZONE_SECURE_BUILD),1)
+CONTIKI_CPU_DIRS += nrf54l15/partition
+CONTIKI_CPU_SOURCEFILES := $(filter-out spu.c,$(CONTIKI_CPU_SOURCEFILES))
+CONTIKI_SOURCEFILES := $(filter-out spu.c,$(CONTIKI_SOURCEFILES))
+CONTIKI_CPU_SOURCEFILES += tz-target-cfg.c tz-spu.c
+CONTIKI_SOURCEFILES += tz-target-cfg.c tz-spu.c
+else ifeq ($(TRUSTZONE_SECURE_BUILD),0)
+ifdef TZ_MINIMAL_NONSECURE_PLATFORM
+CONTIKI_TARGET_SOURCEFILES := $(filter-out platform.c,$(CONTIKI_TARGET_SOURCEFILES))
+CONTIKI_SOURCEFILES := $(filter-out platform.c,$(CONTIKI_SOURCEFILES))
+CONTIKI_CPU_SOURCEFILES := $(filter-out hardfault-handler.c,$(CONTIKI_CPU_SOURCEFILES))
+CONTIKI_SOURCEFILES := $(filter-out hardfault-handler.c,$(CONTIKI_SOURCEFILES))
+CONTIKI_CPU_SOURCEFILES := $(filter-out uarte-arch.c,$(CONTIKI_CPU_SOURCEFILES))
+CONTIKI_SOURCEFILES := $(filter-out uarte-arch.c,$(CONTIKI_SOURCEFILES))
+NRFX_C_SRCS := $(filter-out $(NRFX_ROOT)/drivers/src/nrfx_uarte.c,$(NRFX_C_SRCS))
+NRFX_C_SRCS := $(filter-out $(NRFX_ROOT)/drivers/src/nrfx_power.c,$(NRFX_C_SRCS))
+CONTIKI_SOURCEFILES := $(filter-out nrfx_uarte.c,$(CONTIKI_SOURCEFILES))
+CONTIKI_SOURCEFILES := $(filter-out nrfx_power.c,$(CONTIKI_SOURCEFILES))
+CONTIKI_CPU_SOURCEFILES += tz-minimal-platform.c
+CONTIKI_SOURCEFILES += tz-minimal-platform.c
+endif
+endif
 
 # Override upload/flash targets from Makefile.nrf for nRF54L15 with OpenOCD
 # XIAO nRF54L15 uses onboard CMSIS-DAP (SAMD11)
@@ -152,6 +204,7 @@ EXTERNALDIRS += $(NRF_802154_ROOT)/sl/include/timer
 EXTERNALDIRS += $(NRF_802154_ROOT)/sl/sl_opensource/include
 EXTERNALDIRS += $(NRF_802154_ROOT)/sl/sl_opensource/src
 
+ifneq ($(TRUSTZONE_SECURE_BUILD),0)
 # -- Contiki-NG wrapper + platform abstraction files --
 CONTIKI_CPU_SOURCEFILES += nrf-ieee-driver-nrf54l15.c
 CONTIKI_CPU_SOURCEFILES += nrf_802154_platform_clock.c
@@ -171,9 +224,11 @@ CONTIKI_SOURCEFILES += nrf_802154_platform_hp_timer.c
 CONTIKI_SOURCEFILES += nrf_802154_platform_sl_lptimer.c
 CONTIKI_SOURCEFILES += nrf_802154_platform_timestamper.c
 CONTIKI_SOURCEFILES += nrf_802154_platform_misc.c
+endif
 
 # -- nrf_802154 driver core sources (from driver/src/) --
 NRF_802154_DRV_SRC := $(NRF_802154_ROOT)/driver/src
+ifneq ($(TRUSTZONE_SECURE_BUILD),0)
 NRF_802154_C_SRCS += $(NRF_802154_DRV_SRC)/nrf_802154.c
 NRF_802154_C_SRCS += $(NRF_802154_DRV_SRC)/nrf_802154_core.c
 NRF_802154_C_SRCS += $(NRF_802154_DRV_SRC)/nrf_802154_core_hooks.c
@@ -222,6 +277,7 @@ NRF_802154_C_SRCS += $(NRF_802154_SL_SRC)/nrf_802154_sl_rsch.c
 
 # -- nrf_802154 common utilities --
 NRF_802154_C_SRCS += $(NRF_802154_ROOT)/common/src/nrf_802154_common_utils.c
+endif
 
 # Add all nrf_802154 sources to the build
 CONTIKI_SOURCEFILES += $(notdir $(NRF_802154_C_SRCS))

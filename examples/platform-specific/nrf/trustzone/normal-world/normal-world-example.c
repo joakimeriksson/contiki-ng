@@ -35,68 +35,20 @@
  *          Nicolas Tsiftes <nicolas.tsiftes@ri.se>
  */
 
-#include <stdio.h>
-#include <string.h>
-
 #include "contiki.h"
-#include "dev/button-hal.h"
-
-#include <nrfx.h>
+#include "trustzone/tz-api.h"
 
 PROCESS(normal_world_process, "Normal world process");
 AUTOSTART_PROCESSES(&normal_world_process);
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(normal_world_process, ev, data)
 {
-  static struct etimer et;
-  static unsigned long iteration;
-
   PROCESS_BEGIN();
 
-  printf("Non-secure world\n");
+  tz_api_println("non-secure hello world");
 
-#if TEST_SECURE_FAULT
-  int *sec_retp = (int *)0x2003ff64;
-  printf("sec ret = %d\n", *sec_retp);
-#endif
-
-  etimer_set(&et, CLOCK_SECOND * 10);
   while(true) {
-    PROCESS_WAIT_EVENT();
-    if(ev == button_hal_press_event) {
-      button_hal_button_t *btn = data;
-      printf("Press event (%s)\n", BUTTON_HAL_GET_DESCRIPTION(btn));
-    } else if(ev == button_hal_release_event) {
-      button_hal_button_t *btn = data;
-      printf("Release event (%s)\n", BUTTON_HAL_GET_DESCRIPTION(btn));
-
-      /*
-       * Run a secure fault test by pressing user button (Button 1 on
-       * nRF5340DK) for more than 10 seconds.
-       */
-      if(btn->unique_id == BUTTON_HAL_ID_USER_BUTTON &&
-         btn->press_duration_seconds >= 10) {
-        printf("%s pressed for %u secs. Running fault test.\n\n",
-               BUTTON_HAL_GET_DESCRIPTION(btn),
-               btn->press_duration_seconds);
-        /*
-         * Read memory in the secure world. This should trigger a
-         * secure fault and reboot the device.
-         */
-        int *sec_retp = (int *)0x2003ff64;
-        printf("sec ret = %d\n", *sec_retp);
-      }
-    } else if(ev == button_hal_periodic_event) {
-      button_hal_button_t *btn = data;
-      printf("Periodic event, %u seconds (%s)\n", btn->press_duration_seconds,
-             BUTTON_HAL_GET_DESCRIPTION(btn));
-    }
-
-    if(etimer_expired(&et)) {
-      printf("  Iteration %lu at %lu\n",
-             ++iteration, (unsigned long)clock_time());
-      etimer_reset(&et);
-    }
+    PROCESS_YIELD();
   }
 
   PROCESS_END();
