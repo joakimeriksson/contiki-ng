@@ -130,12 +130,14 @@ extern uint32_t __nsc_size;
 
 typedef bool (*ns_poll_t)(void) CC_TRUSTZONE_NONSECURE_CALL;
 typedef bool (*ns_process_pd_t)(size_t len) CC_TRUSTZONE_NONSECURE_CALL;
+typedef int (*ns_serial_input_t)(unsigned char c) CC_TRUSTZONE_NONSECURE_CALL;
 
 struct tz_api {
   ns_poll_t request_poll;
   ns_process_pd_t process_packet_data;
   uint8_t *packet_data;
   size_t packet_data_size;
+  ns_serial_input_t serial_input;
 };
 
 /**
@@ -160,6 +162,13 @@ bool tz_api_poll(void);
  *
  */
 void tz_api_println(const char *text);
+
+/**
+ * \brief        Write raw bytes to the secure UART without prefix or newline.
+ * \param buf    Pointer to the data buffer in non-secure memory.
+ * \param len    Number of bytes to write.
+ */
+void tz_api_print(const char *buf, size_t len);
 
 /**
  * \brief        Request poll from normal world.

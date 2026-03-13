@@ -48,9 +48,18 @@
 #include <stdarg.h>
 #include <string.h>
 
+#include "lib/ringbuf.h"
+
 static struct tz_api tz_api;
 static bool initialized;
 static volatile unsigned poll_wait_counter;
+static volatile bool serial_rx_pending;
+
+/*---------------------------------------------------------------------------*/
+/* Secure-side ring buffer for serial RX bytes from UART ISR */
+#define TZ_SERIAL_BUFSIZE 128
+static struct ringbuf serial_rxbuf;
+static uint8_t serial_rxbuf_data[TZ_SERIAL_BUFSIZE];
 
 /*---------------------------------------------------------------------------*/
 #include "sys/log.h"
@@ -60,6 +69,29 @@ static volatile unsigned poll_wait_counter;
 #define TZ_API_PRINTLN_MAX_LEN 256
 /*---------------------------------------------------------------------------*/
 process_event_t trustzone_init_event;
+/*---------------------------------------------------------------------------*/
+static int
+tz_serial_input_handler(unsigned char c)
+{
+  ringbuf_put(&serial_rxbuf, c);
+  serial_rx_pending = true;
+  /* Wake the NS world so it calls tz_api_poll() to drain the buffer */
+  tz_api_request_poll_from_ns();
+  return 1;
+}
+/*---------------------------------------------------------------------------*/
+static void
+tz_serial_drain(void)
+{
+  int c;
+  if(!initialized || tz_api.serial_input == NULL) {
+    return;
+  }
+  serial_rx_pending = false;
+  while((c = ringbuf_get(&serial_rxbuf)) != -1) {
+    tz_api.serial_input((unsigned char)c);
+  }
+}
 /*---------------------------------------------------------------------------*/
 CC_TRUSTZONE_SECURE_CALL bool
 tz_api_init(struct tz_api *apip)
@@ -96,9 +128,27 @@ tz_api_init(struct tz_api *apip)
     return false;
   }
 
+  if(apip->serial_input != NULL) {
+    if(cmse_check_address_range(apip->serial_input,
+                                sizeof(apip->serial_input),
+                                CMSE_NONSECURE) == NULL) {
+      return false;
+    }
+  }
+
   memcpy(&tz_api, apip, sizeof(tz_api));
 
+  ringbuf_init(&serial_rxbuf, serial_rxbuf_data, sizeof(serial_rxbuf_data));
+
   initialized = true;
+
+  /* Hook UART RX to forward bytes to NS via the secure ring buffer */
+#if NRF_HAS_UARTE
+  if(tz_api.serial_input != NULL) {
+    extern void uarte_set_input(int (*input)(unsigned char c));
+    uarte_set_input(tz_serial_input_handler);
+  }
+#endif
 
   for(size_t i = 0; autostart_processes[i] != NULL; i++) {
     process_post(autostart_processes[i], trustzone_init_event, NULL);
@@ -129,6 +179,9 @@ tz_api_poll(void)
     process_run();
     watchdog_periodic();
   }
+
+  /* Drain any buffered serial input bytes to the NS callback */
+  tz_serial_drain();
 
   is_poll_running = false;
   poll_wait_counter = 0;
@@ -183,13 +236,36 @@ tz_api_println(const char *text)
   dbg_output_context_swap(previous_context);
 }
 /*---------------------------------------------------------------------------*/
+CC_TRUSTZONE_SECURE_CALL void
+tz_api_print(const char *buf, size_t len)
+{
+  dbg_output_context_t previous_context;
+  size_t i;
+
+  if(buf == NULL || len == 0) {
+    return;
+  }
+
+  /* Validate entire NS buffer range in one call */
+  if(cmse_check_address_range((void *)buf, len, CMSE_NONSECURE) == NULL) {
+    return;
+  }
+
+  previous_context = dbg_output_context_swap(DBG_OUTPUT_CONTEXT_NONSECURE);
+  for(i = 0; i < len; i++) {
+    dbg_putchar(buf[i]);
+  }
+  dbg_output_context_swap(previous_context);
+}
+/*---------------------------------------------------------------------------*/
 bool
 tz_api_request_poll_from_ns(void)
 {
   if(!initialized) {
     return false;
   }
-  if(poll_wait_counter > 0) {
+  /* Bypass wait counter when serial input is pending */
+  if(!serial_rx_pending && poll_wait_counter > 0) {
     poll_wait_counter--;
     return false;
   }
