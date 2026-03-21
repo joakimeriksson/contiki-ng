@@ -152,6 +152,8 @@ gpio_hal_arch_port_pin_cfg_set(gpio_hal_port_t port, gpio_hal_pin_t pin, gpio_ha
 #if defined(NRF54L15_XXAA)
   /* nRF54L15 uses the new v3.x API with bundled config structure */
   const nrfx_gpiote_t *p_instance = get_gpiote_instance(pin_number);
+  nrfx_err_t err;
+  uint8_t channel;
 
   nrf_gpio_pin_pull_t pull_config = NRF_GPIO_PIN_NOPULL;
 
@@ -179,6 +181,16 @@ gpio_hal_arch_port_pin_cfg_set(gpio_hal_port_t port, gpio_hal_pin_t pin, gpio_ha
     trigger_config.trigger = NRFX_GPIOTE_TRIGGER_TOGGLE;
   }
 
+  if(trigger_config.trigger != NRFX_GPIOTE_TRIGGER_NONE) {
+    err = nrfx_gpiote_channel_get(p_instance, pin_number, &channel);
+    if(err == NRFX_ERROR_INVALID_PARAM) {
+      err = nrfx_gpiote_channel_alloc(p_instance, &channel);
+    }
+    if(err == NRFX_SUCCESS) {
+      trigger_config.p_in_channel = &channel;
+    }
+  }
+
   tmp = cfg & GPIO_HAL_PIN_CFG_PULL_MASK;
   if(tmp == GPIO_HAL_PIN_CFG_PULL_DOWN) {
     pull_config = NRF_GPIO_PIN_PULLDOWN;
@@ -186,7 +198,10 @@ gpio_hal_arch_port_pin_cfg_set(gpio_hal_port_t port, gpio_hal_pin_t pin, gpio_ha
     pull_config = NRF_GPIO_PIN_PULLUP;
   }
 
-  nrfx_gpiote_input_configure(p_instance, pin_number, &input_pin_config);
+  err = nrfx_gpiote_input_configure(p_instance, pin_number, &input_pin_config);
+  if(err != NRFX_SUCCESS) {
+    return;
+  }
 
   tmp = cfg & GPIO_HAL_PIN_CFG_INT_MASK;
   if(tmp == GPIO_HAL_PIN_CFG_INT_ENABLE) {

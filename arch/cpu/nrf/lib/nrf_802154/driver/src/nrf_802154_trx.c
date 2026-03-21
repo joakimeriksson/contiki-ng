@@ -63,6 +63,7 @@
 #include "mpsl_tx_power.h"
 #include "platform/nrf_802154_irq.h"
 #include "protocol/mpsl_fem_protocol_api.h"
+#include "nrf54l15-radio-debug.h"
 
 #include "nrf_802154_sl_ant_div.h"
 
@@ -1687,10 +1688,13 @@ bool nrf_802154_trx_transmit_ack(const void * p_transmit_buffer, uint32_t delay_
     NRF_802154_ASSERT(p_transmit_buffer != NULL);
 
     m_trx_state = TRX_STATE_TXACK;
+    nrf54l15_radio_debug.last_ack_delay_us = delay_us;
 
     // Set TIMER's CC to the moment when ramp-up should occur.
     if (delay_us <= TX_RAMP_UP_TIME + RX_PHYEND_EVENT_LATENCY_US)
     {
+        nrf54l15_radio_debug.ack_delay_too_short++;
+        nrf54l15_radio_debug.last_ack_arm_result = 0;
         timer_stop_and_clear();
         nrf_802154_log_function_exit(NRF_802154_LOG_VERBOSITY_LOW);
         return result;
@@ -1751,6 +1755,9 @@ bool nrf_802154_trx_transmit_ack(const void * p_transmit_buffer, uint32_t delay_
                                              NRF_TIMER_CC_CHANNEL3);
     uint32_t timer_cc_fem_start = nrf_timer_cc_get(NRF_802154_TIMER_INSTANCE,
                                                    NRF_TIMER_CC_CHANNEL0);
+    nrf54l15_radio_debug.last_ack_ramp_up_cc = timer_cc_ramp_up_start;
+    nrf54l15_radio_debug.last_ack_now_cc = timer_cc_now;
+    nrf54l15_radio_debug.last_ack_fem_cc = timer_cc_fem_start;
 
     // When external PA uses a timer, it should be configured to a time later than ramp up time. In
     // such case, the timer stops with shorts on PA timer. But if external PA does not use a timer,
@@ -1782,6 +1789,7 @@ bool nrf_802154_trx_transmit_ack(const void * p_transmit_buffer, uint32_t delay_
 
     if (result)
     {
+        nrf54l15_radio_debug.last_ack_arm_result = 1U;
 #if !defined(NRF53_SERIES)
         uint32_t ints_to_enable = NRF_RADIO_INT_PHYEND_MASK |
                                   NRF_RADIO_INT_ADDRESS_MASK |
@@ -1797,6 +1805,7 @@ bool nrf_802154_trx_transmit_ack(const void * p_transmit_buffer, uint32_t delay_
     }
     else
     {
+        nrf54l15_radio_debug.last_ack_arm_result = 0U;
 #if !NRF_802154_TRX_TEST_MODE_ALLOW_LATE_TX_ACK
         /* We were to late with setting up PPI_TIMER_ACK, ack transmission was not triggered and
          * will not be triggered in future.
@@ -2558,6 +2567,9 @@ static void irq_handler_crcok(void)
             m_flags.rssi_started = true;
             rxframe_finish();
             m_trx_state = TRX_STATE_RXFRAME_FINISHED;
+            nrf_timer_task_trigger(NRF_802154_TIMER_INSTANCE, NRF_TIMER_TASK_CAPTURE5);
+            nrf54l15_radio_debug.last_ack_irq_entry_cc =
+                nrf_timer_cc_get(NRF_802154_TIMER_INSTANCE, NRF_TIMER_CC_CHANNEL5);
             nrf_802154_trx_receive_frame_received();
             break;
 

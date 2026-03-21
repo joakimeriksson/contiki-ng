@@ -99,32 +99,39 @@ hardfault_print_saved_crash(void)
 {
   extern int dbg_putchar(int c);
   static const char hx[] = "0123456789abcdef";
-
-  /* Print hardfault canary to check if HardFault_c_handler ever ran */
   extern volatile uint32_t hf_canary;
-  dbg_putchar('C');
-  dbg_putchar('=');
-  { uint32_t c = hf_canary;
-    for(int s = 28; s >= 0; s -= 4) dbg_putchar(hx[(c >> s) & 0xf]);
-  }
-  dbg_putchar(' ');
 
-  /* Always print the magic value for debugging .noinit persistence */
-  dbg_putchar('M');
-  dbg_putchar('=');
-  { uint32_t m = crash_info.magic;
-    for(int s = 28; s >= 0; s -= 4) dbg_putchar(hx[(m >> s) & 0xf]);
-  }
-  dbg_putchar('\n');
-
-  /* Check canary: if it's set, hardfault handler ran but maybe crash_info
-   * wasn't fully written. Print what we have regardless. */
+  /* Stay quiet on normal boots: .noinit contains arbitrary stale RAM. */
   if(hf_canary == HF_CANARY_VALUE) {
+    dbg_putchar('C');
+    dbg_putchar('=');
+    { uint32_t c = hf_canary;
+      for(int s = 28; s >= 0; s -= 4) dbg_putchar(hx[(c >> s) & 0xf]);
+    }
+    dbg_putchar(' ');
+    dbg_putchar('M');
+    dbg_putchar('=');
+    { uint32_t m = crash_info.magic;
+      for(int s = 28; s >= 0; s -= 4) dbg_putchar(hx[(m >> s) & 0xf]);
+    }
+    dbg_putchar('\n');
     dbg_putchar('!'); dbg_putchar('H'); dbg_putchar('F'); dbg_putchar('\n');
     hf_canary = 0; /* Clear canary */
-    /* Fall through to print crash info even if magic doesn't match */
   } else if(crash_info.magic != CRASH_MAGIC) {
     return;
+  } else {
+    dbg_putchar('C');
+    dbg_putchar('=');
+    { uint32_t c = hf_canary;
+      for(int s = 28; s >= 0; s -= 4) dbg_putchar(hx[(c >> s) & 0xf]);
+    }
+    dbg_putchar(' ');
+    dbg_putchar('M');
+    dbg_putchar('=');
+    { uint32_t m = crash_info.magic;
+      for(int s = 28; s >= 0; s -= 4) dbg_putchar(hx[(m >> s) & 0xf]);
+    }
+    dbg_putchar('\n');
   }
 
   /* Clear magic so we don't print again on next boot */

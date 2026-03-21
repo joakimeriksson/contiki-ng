@@ -19,9 +19,24 @@
 static volatile bool hfclk_running;
 static volatile bool lfclk_running;
 
+static void
+set_constant_latency(bool enable)
+{
+#if defined(POWER_TASKS_CONSTLAT_TASKS_CONSTLAT_Msk) && defined(POWER_TASKS_LOWPWR_TASKS_LOWPWR_Msk)
+  if(enable) {
+    NRF_POWER->TASKS_CONSTLAT = POWER_TASKS_CONSTLAT_TASKS_CONSTLAT_Trigger;
+  } else {
+    NRF_POWER->TASKS_LOWPWR = POWER_TASKS_LOWPWR_TASKS_LOWPWR_Trigger;
+  }
+#else
+  (void)enable;
+#endif
+}
+
 void nrf_802154_clock_init(void)
 {
   lfclk_running = true; /* LFCLK already started by clock-arch.c */
+  set_constant_latency(false);
 
   /* Pre-start HFXO + PLL while interrupts are still enabled, so the
    * GRTC clock tick ISR keeps running during the busy-wait. */
@@ -64,6 +79,7 @@ void nrf_802154_clock_hfclk_start(void)
 
     hfclk_running = true;
   }
+  set_constant_latency(true);
   nrf_802154_clock_hfclk_ready();
 }
 
@@ -71,6 +87,7 @@ void nrf_802154_clock_hfclk_stop(void)
 {
   /* Keep HFXO+PLL always running — stopping them on nRF54L15 can disrupt
    * the GRTC syscounter that Contiki-NG uses for clock ticks. */
+  set_constant_latency(false);
 }
 
 bool nrf_802154_clock_hfclk_is_running(void)

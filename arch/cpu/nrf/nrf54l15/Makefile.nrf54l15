@@ -13,6 +13,7 @@ CFLAGS += -DNRF_APPLICATION
 CFLAGS += -DCPU_CONF_PATH=\"nrf54l15-conf.h\"
 CFLAGS += -DCPU_DEF_PATH=\"nrf54l15-def.h\"
 CFLAGS += -I$(NRF54L15_MDK_DIR)
+CFLAGS += -I$(CONTIKI_CPU)/nrf54l15
 # Suppress warnings from nrfx v3.x HAL layer and nrf_802154 library for nRF54L15
 CFLAGS += -Wno-unused-variable
 CFLAGS += -Wno-unused-function
@@ -95,31 +96,38 @@ CONTIKI_SOURCEFILES += tz-minimal-platform.c
 endif
 endif
 
-# Override upload/flash targets from Makefile.nrf for nRF54L15 with OpenOCD
-# XIAO nRF54L15 uses onboard CMSIS-DAP (SAMD11)
+# Override upload/flash targets from Makefile.nrf for nRF54L15.
+# Boards can optionally provide an OpenOCD config; otherwise default to J-Link.
 NRFJPROG ?= nrfjprog
 JLINKEXE ?= JLinkExe
 NRFUTIL ?= nrfutil
 NRFUTIL_SERIAL ?=
+NRF54L15_JLINK_DEVICE ?= nRF54L15_M33
+NRF54L15_JLINK_IF ?= SWD
+NRF54L15_JLINK_SPEED ?= 4000
+NRFJPROG_OPTIONS += -f NRF54L
+NRF54L15_CAN_USE_OPENOCD := $(if $(NRF54L15_OPENOCD_CFG),$(shell which openocd))
 
 # Generate hex and flash for nRF54L15
 # Usage: make TARGET=nrf BOARD=nrf54l15/xiao hello-world.flash
 %.flash %.upload: $(OUT_HEX)
-ifneq (, $(shell which openocd))
-	@echo "Flashing with OpenOCD via CMSIS-DAP..."
-	openocd -f $(PLATFORM_ROOT_DIR)/nrf54l15/xiao/support/openocd.cfg \
+ifneq ($(NRF54L15_CAN_USE_OPENOCD),)
+	@echo "Flashing with OpenOCD..."
+	openocd -f $(NRF54L15_OPENOCD_CFG) \
 		-c "init; reset halt; nrf54l-load $<; verify_image $<; reset run; shutdown"
-else ifneq (, $(shell which $(JLINKEXE)))
-	@echo "Flashing with J-Link (JLinkExe)..."
-	@echo "erase\nloadfile $<\nr\ng\nexit\n" | $(JLINKEXE) -device NRF54L15_XXAA -if SWD -speed 4000 -autoconnect 1
-else ifneq (, $(shell which $(NRFJPROG)))
-	@echo "Flashing with J-Link (nrfjprog) for debugging support..."
-	$(NRFJPROG) $(NRFJPROG_OPTIONS) --program $< --chiperase --verify --reset
 else ifneq (, $(shell which $(NRFUTIL)))
 	@echo "Flashing with nrfutil..."
 	$(NRFUTIL) device program --firmware $< \
-		$(if $(NRFUTIL_SERIAL),--serial-number $(NRFUTIL_SERIAL),--traits usb) \
+		$(if $(NRFUTIL_SERIAL),--serial-number $(NRFUTIL_SERIAL),--traits jlink) \
+		--family nrf54l \
+		--core application \
 		--options chip_erase_mode=ERASE_ALL,verify=VERIFY_READ,reset=RESET_SYSTEM
+else ifneq (, $(shell which $(JLINKEXE)))
+	@echo "Flashing with J-Link (JLinkExe)..."
+	@echo "erase\nloadfile $<\nr\ng\nexit\n" | $(JLINKEXE) -device $(NRF54L15_JLINK_DEVICE) -if $(NRF54L15_JLINK_IF) -speed $(NRF54L15_JLINK_SPEED) -autoconnect 1
+else ifneq (, $(shell which $(NRFJPROG)))
+	@echo "Flashing with J-Link (nrfjprog) for debugging support..."
+	$(NRFJPROG) $(NRFJPROG_OPTIONS) --program $< --chiperase --verify --reset
 else
 	@echo "Error: No flashing tool found. Please install one of:"
 	@echo "  - openocd: brew install openocd (macOS) or apt-get install openocd (Linux)"
@@ -215,6 +223,7 @@ CONTIKI_CPU_SOURCEFILES += nrf_802154_platform_hp_timer.c
 CONTIKI_CPU_SOURCEFILES += nrf_802154_platform_sl_lptimer.c
 CONTIKI_CPU_SOURCEFILES += nrf_802154_platform_timestamper.c
 CONTIKI_CPU_SOURCEFILES += nrf_802154_platform_misc.c
+CONTIKI_CPU_SOURCEFILES += nrf54l15-radio-debug.c
 CONTIKI_SOURCEFILES += nrf-ieee-driver-nrf54l15.c
 CONTIKI_SOURCEFILES += nrf_802154_platform_clock.c
 CONTIKI_SOURCEFILES += nrf_802154_platform_irq.c
@@ -224,6 +233,7 @@ CONTIKI_SOURCEFILES += nrf_802154_platform_hp_timer.c
 CONTIKI_SOURCEFILES += nrf_802154_platform_sl_lptimer.c
 CONTIKI_SOURCEFILES += nrf_802154_platform_timestamper.c
 CONTIKI_SOURCEFILES += nrf_802154_platform_misc.c
+CONTIKI_SOURCEFILES += nrf54l15-radio-debug.c
 endif
 
 # -- nrf_802154 driver core sources (from driver/src/) --

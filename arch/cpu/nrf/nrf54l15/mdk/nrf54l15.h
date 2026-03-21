@@ -50,10 +50,19 @@ POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 /*
- * Override GPIOTE_IRQ_GROUP before nrf54l15_interim.h sets it
- * We use group 0 (secure registers: INTENSET0, INTENCLR0)
+ * nRF54L15 CPUAPP uses interrupt group 1 in secure mode and group 0 in
+ * non-secure mode, matching Zephyr's CPUAPP DTS setup. FLPR uses group 0.
+ *
+ * This must be visible before nrfx pulls in the interim header because the
+ * HAL token-pastes the group number into register names.
  */
+#ifndef GPIOTE_IRQ_GROUP
+#if defined(NRF_FLPR) || defined(NRF_TRUSTZONE_NONSECURE)
 #define GPIOTE_IRQ_GROUP 0
+#else
+#define GPIOTE_IRQ_GROUP 1
+#endif
+#endif
 
 /*
  * Force NRF_GPIOTE_PORT_ID to 0 by defining LUMOS_XXAA for GPIOTE
@@ -97,10 +106,9 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "nrf54l15_types.h"
 
 /*
- * Define GPIOTE register name compatibility aliases for HAL
- * nRF54L15 MDK defines INTENSET0/INTENSET1, HAL expects unnumbered INTENSET
- * The HAL will concatenate IRQ_GROUP (0), so INTENSET + 0 = INTENSET0
- * Define unnumbered mask names to point to the numbered ones that exist in MDK
+ * Define GPIOTE register name compatibility aliases for HAL.
+ * The HAL uses numbered INTENSET/INTENCLR names on nRF54L15, but it also
+ * probes for a few unnumbered compatibility symbols.
  */
 #define GPIOTE_INTENSET_IN0_Msk GPIOTE_INTENSET0_IN0_Msk
 #define GPIOTE_INTENSET_IN1_Msk GPIOTE_INTENSET0_IN1_Msk

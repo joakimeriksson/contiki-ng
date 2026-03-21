@@ -331,8 +331,9 @@ nrf_802154_sl_timer_update_ppi(nrf_802154_sl_timer_t *p_timer, uint32_t ppi_chn)
 }
 
 /*---------------------------------------------------------------------------*/
-/* Timer Coordinator -- no-ops for now. Synchronization between HP and LP
- * timers can be added later when precise timestamping is needed. */
+/* Timer Coordinator -- SL-opensource runs without frame timestamping.
+ * Report timestamps as unavailable until a real capture implementation exists.
+ */
 /*---------------------------------------------------------------------------*/
 void
 nrf_802154_timer_coord_init(void)
@@ -367,6 +368,6 @@ nrf_802154_timer_coord_timestamp_prepare(const nrf_802154_sl_event_handle_t *p_e
 bool
 nrf_802154_timer_coord_timestamp_get(uint64_t *p_timestamp)
 {
-  *p_timestamp = grtc_syscounter_read_active();
-  return true;
+  (void)p_timestamp;
+  return false;
 }

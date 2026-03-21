@@ -69,8 +69,10 @@
 #include "nrf_802154_types_internal.h"
 #include "nrf_802154_utils.h"
 #include "nrf_802154_nrfx_addons.h"
+#include "nrf_802154_peripherals.h"
 #include "drivers/nrfx_errors.h"
 #include "hal/nrf_radio.h"
+#include "hal/nrf_timer.h"
 #include "mac_features/nrf_802154_filter.h"
 #include "mac_features/nrf_802154_frame_parser.h"
 #include "mac_features/ack_generator/nrf_802154_ack_generator.h"
@@ -78,10 +80,15 @@
 #include "rsch/nrf_802154_rsch_crit_sect.h"
 #include "timer/nrf_802154_timer_coord.h"
 #include "platform/nrf_802154_irq.h"
+
+#ifndef NRF_802154_ACK_IFS_EXTRA_TIME_US
+#define NRF_802154_ACK_IFS_EXTRA_TIME_US 0U
+#endif
 #include "protocol/mpsl_fem_protocol_api.h"
 
 #include "nrf_802154_core_hooks.h"
 #include "nrf_802154_sl_ant_div.h"
+#include "nrf54l15-radio-debug.h"
 
 #if defined(CONFIG_SOC_SERIES_BSIM_NRFXX)
 #include "nrf_802154_bsim_utils.h"
@@ -1628,6 +1635,7 @@ void nrf_802154_trx_receive_ack_started(void)
     nrf_802154_log_function_enter(NRF_802154_LOG_VERBOSITY_LOW);
 
     NRF_802154_ASSERT(m_state == RADIO_STATE_RX_ACK);
+    nrf54l15_radio_debug.ack_rx_started++;
     nrf_802154_core_hooks_rx_ack_started();
 
     nrf_802154_log_function_exit(NRF_802154_LOG_VERBOSITY_LOW);
@@ -2045,6 +2053,10 @@ void nrf_802154_trx_receive_frame_received(void)
 {
     nrf_802154_log_function_enter(NRF_802154_LOG_VERBOSITY_LOW);
 
+    nrf_timer_task_trigger(NRF_802154_TIMER_INSTANCE, NRF_TIMER_TASK_CAPTURE4);
+    nrf54l15_radio_debug.last_ack_core_entry_cc =
+        nrf_timer_cc_get(NRF_802154_TIMER_INSTANCE, NRF_TIMER_CC_CHANNEL4);
+
     uint8_t             * p_received_data = mp_current_rx_buffer->data;
     nrf_802154_rx_error_t filter_result   = NRF_802154_RX_ERROR_RUNTIME;
 
@@ -2097,6 +2109,7 @@ void nrf_802154_trx_receive_frame_received(void)
 #endif
 
         nrf_802154_sl_ant_div_rx_frame_received_notify();
+        nrf54l15_radio_debug.rx_frame_ok++;
 
         bool send_ack = false;
 
@@ -2105,6 +2118,7 @@ void nrf_802154_trx_receive_frame_received(void)
             nrf_802154_frame_ar_bit_is_set(&m_current_rx_frame_data) &&
             nrf_802154_pib_auto_ack_get())
         {
+            nrf54l15_radio_debug.ack_requested++;
             nrf_802154_tx_work_buffer_reset(&m_default_frame_props);
             mp_ack   = nrf_802154_ack_generator_create(&m_current_rx_frame_data);
             send_ack = (mp_ack != NULL);
@@ -2116,8 +2130,14 @@ void nrf_802154_trx_receive_frame_received(void)
 
             if (is_state_allowed_for_prio(m_rsch_priority, RADIO_STATE_TX_ACK))
             {
-                if (nrf_802154_trx_transmit_ack(nrf_802154_tx_work_buffer_get(mp_ack), ACK_IFS))
+                nrf_timer_task_trigger(NRF_802154_TIMER_INSTANCE, NRF_TIMER_TASK_CAPTURE4);
+                nrf54l15_radio_debug.last_ack_before_txreq_cc =
+                    nrf_timer_cc_get(NRF_802154_TIMER_INSTANCE, NRF_TIMER_CC_CHANNEL4);
+
+                if (nrf_802154_trx_transmit_ack(nrf_802154_tx_work_buffer_get(mp_ack),
+                                                ACK_IFS + NRF_802154_ACK_IFS_EXTRA_TIME_US))
                 {
+                    nrf54l15_radio_debug.ack_tx_arm_ok++;
                     // Intentionally empty: transmitting ack, because we can
 #if defined(CONFIG_SOC_SERIES_BSIM_NRFXX)
                     /**
@@ -2136,7 +2156,8 @@ void nrf_802154_trx_receive_frame_received(void)
                     nrf_802154_bsim_utils_core_hooks_adjustments_t adjustments;
 
                     adjustments.tx_ack_started.time_to_radio_address_us =
-                        ACK_IFS + TX_RAMP_UP_TIME + PHY_US_TIME_FROM_SYMBOLS(PHY_SHR_SYMBOLS);
+                        ACK_IFS + NRF_802154_ACK_IFS_EXTRA_TIME_US + TX_RAMP_UP_TIME +
+                        PHY_US_TIME_FROM_SYMBOLS(PHY_SHR_SYMBOLS);
 
                     nrf_802154_bsim_utils_core_hooks_adjustments_set(&adjustments);
 
@@ -2149,6 +2170,7 @@ void nrf_802154_trx_receive_frame_received(void)
                 }
                 else
                 {
+                    nrf54l15_radio_debug.ack_tx_arm_fail++;
                     mp_current_rx_buffer->free = false;
 
                     switch_to_idle();
@@ -2252,6 +2274,7 @@ void nrf_802154_trx_transmit_ack_started(void)
     nrf_802154_log_function_enter(NRF_802154_LOG_VERBOSITY_LOW);
 
     NRF_802154_ASSERT(m_state == RADIO_STATE_TX_ACK);
+    nrf54l15_radio_debug.ack_tx_started++;
     if (tx_started_core_hooks_will_fit_within_timeslot(mp_ack))
     {
         transmit_ack_started_notify();
@@ -2276,6 +2299,7 @@ void nrf_802154_trx_transmit_ack_transmitted(void)
     nrf_802154_log_function_enter(NRF_802154_LOG_VERBOSITY_LOW);
 
     NRF_802154_ASSERT(m_state == RADIO_STATE_TX_ACK);
+    nrf54l15_radio_debug.ack_tx_done++;
 
     uint8_t * p_received_data = mp_current_rx_buffer->data;
 
@@ -2433,6 +2457,7 @@ static bool ack_match_check(const nrf_802154_frame_t * p_tx_frame,
 static void on_bad_ack(void)
 {
     nrf_802154_log_function_enter(NRF_802154_LOG_VERBOSITY_LOW);
+    nrf54l15_radio_debug.ack_rx_invalid++;
 
     // We received either a frame with incorrect CRC or not an ACK frame or not matching ACK
     switch_to_idle();
@@ -2459,6 +2484,7 @@ void nrf_802154_trx_receive_ack_received(void)
 
     if (result && ack_match_check(&m_tx.frame, &m_current_rx_frame_data))
     {
+        nrf54l15_radio_debug.ack_rx_valid++;
 #if (NRF_802154_FRAME_TIMESTAMP_ENABLED)
         uint64_t ts = timer_coord_timestamp_get();
 
@@ -2847,6 +2873,7 @@ bool nrf_802154_core_ack_timeout_handle(const nrf_802154_ack_timeout_handle_para
     {
         if ((m_state == RADIO_STATE_RX_ACK) && (p_param->p_frame == m_tx.frame.p_frame))
         {
+            nrf54l15_radio_debug.ack_timeout++;
             bool r;
 
             if (!nrf_802154_pib_rx_on_when_idle_get())
