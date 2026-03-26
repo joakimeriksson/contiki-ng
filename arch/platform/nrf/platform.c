@@ -65,16 +65,28 @@
 void hardfault_print_saved_crash(void);
 #endif
 /*---------------------------------------------------------------------------*/
+__attribute__((weak)) void
+platform_init_board(void)
+{
+}
+/*---------------------------------------------------------------------------*/
+__attribute__((weak)) void
+platform_init_board_stage_two(void)
+{
+}
+/*---------------------------------------------------------------------------*/
 void
 platform_init_stage_one(void)
 {
   gpio_hal_init();
+  platform_init_board();
   leds_init();
 }
 /*---------------------------------------------------------------------------*/
 void
 platform_init_stage_two(void)
 {
+  platform_init_board_stage_two();
   button_hal_init();
 
   /* Seed value is ignored since hardware RNG is used. */
