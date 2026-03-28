@@ -30,14 +30,10 @@
 /* Match Nordic's SL-opensource integration: frame timestamping is disabled. */
 #define NRF_802154_FRAME_TIMESTAMP_ENABLED     0
 
-/* Give nRF54L a small extra margin before auto-ACK TXEN scheduling.
- * The sender-side ACK timeout is still much larger than this value. */
-#define NRF_802154_ACK_IFS_EXTRA_TIME_US       0U
-
-/* On nRF54L15 we frequently reach the ACK turnaround path too late to arm the
- * regular TIMER/DPPI sequence. Allow Nordic's fallback path so we can confirm
- * whether the dominant issue is late entry into ACK transmit scheduling. */
-#define NRF_802154_TRX_TEST_MODE_ALLOW_LATE_TX_ACK 1
+/* nRF54L15 on the application core still needs extra ACK turnaround slack on
+ * this bare-metal Contiki port. The Zephyr-closer timer fixes help, but they
+ * do not eliminate the remaining scheduling gap. */
+#define NRF_802154_ACK_IFS_EXTRA_TIME_US       160U
 
 /* Disable features not available in the open-source SL or not needed. */
 #define NRF_802154_ENCRYPTION_ENABLED          0

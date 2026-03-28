@@ -2053,10 +2053,6 @@ void nrf_802154_trx_receive_frame_received(void)
 {
     nrf_802154_log_function_enter(NRF_802154_LOG_VERBOSITY_LOW);
 
-    nrf_timer_task_trigger(NRF_802154_TIMER_INSTANCE, NRF_TIMER_TASK_CAPTURE4);
-    nrf54l15_radio_debug.last_ack_core_entry_cc =
-        nrf_timer_cc_get(NRF_802154_TIMER_INSTANCE, NRF_TIMER_CC_CHANNEL4);
-
     uint8_t             * p_received_data = mp_current_rx_buffer->data;
     nrf_802154_rx_error_t filter_result   = NRF_802154_RX_ERROR_RUNTIME;
 
@@ -2130,10 +2126,6 @@ void nrf_802154_trx_receive_frame_received(void)
 
             if (is_state_allowed_for_prio(m_rsch_priority, RADIO_STATE_TX_ACK))
             {
-                nrf_timer_task_trigger(NRF_802154_TIMER_INSTANCE, NRF_TIMER_TASK_CAPTURE4);
-                nrf54l15_radio_debug.last_ack_before_txreq_cc =
-                    nrf_timer_cc_get(NRF_802154_TIMER_INSTANCE, NRF_TIMER_CC_CHANNEL4);
-
                 if (nrf_802154_trx_transmit_ack(nrf_802154_tx_work_buffer_get(mp_ack),
                                                 ACK_IFS + NRF_802154_ACK_IFS_EXTRA_TIME_US))
                 {

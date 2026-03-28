@@ -43,6 +43,7 @@ struct radio_test_state {
   bool running;
   bool verbose;
   bool target_set;
+  bool run_limited;
   bool tx_busy;
   bool timer_dirty;
   bool tx_event_pending;
@@ -51,6 +52,7 @@ struct radio_test_state {
   uint16_t payload_len;
   uint16_t pending_tx;
   uint32_t interval_ms;
+  uint32_t run_remaining;
   uint32_t next_seq;
   uint32_t tx_started;
   uint32_t tx_ok;
@@ -93,7 +95,7 @@ static const struct shell_command_t radio_test_commands[] = {
   {
     "radio-test",
     cmd_radio_test,
-    "'> radio-test': status | status-brief | target <mac> | clear-target | start | stop | once | interval <ms> | len <bytes> | txmax <n> | channel [n] | power [dbm] | verbose 0/1 | reset"
+    "'> radio-test': status | status-brief | target <mac> | clear-target | start | run <count> | stop | once | interval <ms> | len <bytes> | txmax <n> | channel [n] | power [dbm] | verbose 0/1 | reset"
   },
   { NULL, NULL, NULL }
 };
@@ -133,6 +135,8 @@ init_state(void)
   state.payload_len = RADIO_TEST_DEFAULT_LEN;
   state.interval_ms = RADIO_TEST_DEFAULT_MS;
   state.max_transmissions = RADIO_TEST_DEFAULT_MAX_TX;
+  state.run_limited = false;
+  state.run_remaining = 0;
   state.last_tx_status = -1;
 }
 
@@ -279,9 +283,11 @@ print_status(shell_output_func output)
   }
 
   SHELL_OUTPUT(output,
-               "Running=%u verbose=%u tx-busy=%u pending=%u interval-ms=%" PRIu32
+               "Running=%u verbose=%u limited=%u remaining=%" PRIu32
+               " tx-busy=%u pending=%u interval-ms=%" PRIu32
                " len=%u txmax=%u\n",
-               state.running, state.verbose, state.tx_busy, state.pending_tx,
+               state.running, state.verbose, state.run_limited,
+               state.run_remaining, state.tx_busy, state.pending_tx,
                state.interval_ms, state.payload_len, state.max_transmissions);
 
   SHELL_OUTPUT(output,
@@ -363,9 +369,11 @@ print_status_brief(shell_output_func output)
   }
 
   SHELL_OUTPUT(output,
-               " target_set=%u running=%u verbose=%u tx_busy=%u pending=%u"
+               " target_set=%u running=%u verbose=%u run_limited=%u"
+               " run_remaining=%" PRIu32 " tx_busy=%u pending=%u"
                " interval_ms=%" PRIu32 " len=%u txmax=%u",
-               state.target_set, state.running, state.verbose, state.tx_busy,
+               state.target_set, state.running, state.verbose,
+               state.run_limited, state.run_remaining, state.tx_busy,
                state.pending_tx, state.interval_ms, state.payload_len,
                state.max_transmissions);
 
@@ -517,6 +525,12 @@ input_callback(const void *data, uint16_t len, const linkaddr_t *src,
   hdr = (const struct radio_test_hdr *)data;
   if(hdr->magic != RADIO_TEST_MAGIC) {
     state.rx_bad_magic++;
+    if(state.verbose) {
+      LOG_INFO("RX bad magic 0x%08" PRIx32 " len=%u from ",
+               hdr->magic, len);
+      LOG_INFO_LLADDR(src);
+      LOG_INFO_(" mac_seq=%u\n", packetbuf_attr(PACKETBUF_ATTR_MAC_SEQNO));
+    }
     return;
   }
 
@@ -635,14 +649,40 @@ static PT_THREAD(cmd_radio_test(struct pt *pt, shell_output_func output, char *a
 
   if(!strcmp(args, "start")) {
     state.running = true;
+    state.run_limited = false;
+    state.run_remaining = 0;
     state.timer_dirty = true;
     queue_tx_request(1);
     SHELL_OUTPUT(output, "Periodic transmit enabled\n");
     PT_EXIT(pt);
   }
 
+  if(!strcmp(args, "run")) {
+    SHELL_ARGS_NEXT(args, next_args);
+    if(args == NULL || !parse_u32(args, &value) || value == 0) {
+      SHELL_OUTPUT(output, "Usage: radio-test run <count>\n");
+      PT_EXIT(pt);
+    }
+
+    state.running = true;
+    state.run_limited = true;
+    state.run_remaining = value - 1;
+    state.timer_dirty = true;
+    queue_tx_request(1);
+
+    if(state.run_remaining == 0) {
+      state.running = false;
+      process_poll(&radio_test_process);
+    }
+
+    SHELL_OUTPUT(output, "Queued %" PRIu32 " timed transmits\n", value);
+    PT_EXIT(pt);
+  }
+
   if(!strcmp(args, "stop")) {
     state.running = false;
+    state.run_limited = false;
+    state.run_remaining = 0;
     state.timer_dirty = true;
     process_poll(&radio_test_process);
     SHELL_OUTPUT(output, "Periodic transmit disabled\n");
@@ -799,7 +839,7 @@ static PT_THREAD(cmd_radio_test(struct pt *pt, shell_output_func output, char *a
   }
 
   SHELL_OUTPUT(output,
-               "Usage: radio-test [status|status-brief|target|clear-target|start|stop|once|interval|len|txmax|channel|power|verbose|reset]\n");
+               "Usage: radio-test [status|status-brief|target|clear-target|start|run|stop|once|interval|len|txmax|channel|power|verbose|reset]\n");
 
   PT_END(pt);
 }
@@ -826,6 +866,12 @@ PROCESS_THREAD(radio_test_process, ev, data)
       timer_active = false;
       if(state.running) {
         queue_tx_request(1);
+        if(state.run_limited && state.run_remaining > 0) {
+          state.run_remaining--;
+        }
+        if(state.run_limited && state.run_remaining == 0) {
+          state.running = false;
+        }
         state.timer_dirty = true;
       }
     }

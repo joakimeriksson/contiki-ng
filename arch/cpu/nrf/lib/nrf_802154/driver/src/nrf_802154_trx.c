@@ -2567,9 +2567,6 @@ static void irq_handler_crcok(void)
             m_flags.rssi_started = true;
             rxframe_finish();
             m_trx_state = TRX_STATE_RXFRAME_FINISHED;
-            nrf_timer_task_trigger(NRF_802154_TIMER_INSTANCE, NRF_TIMER_TASK_CAPTURE5);
-            nrf54l15_radio_debug.last_ack_irq_entry_cc =
-                nrf_timer_cc_get(NRF_802154_TIMER_INSTANCE, NRF_TIMER_CC_CHANNEL5);
             nrf_802154_trx_receive_frame_received();
             break;
 

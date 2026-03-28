@@ -5,91 +5,98 @@
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * High Precision Timer platform for nrf_802154 on nRF54L15.
- * Uses TIMER10 (dedicated per nrf_802154_peripherals_nrf54l.h).
- * Configured as 1 MHz, 32-bit counter for microsecond precision.
+ * Uses TIMER10 and matches Nordic's upstream HP timer contract:
+ * CC[1] = current-time capture, CC[2] = sync capture, CC[3] = event timestamp.
  */
 
 #include "platform/nrf_802154_hp_timer.h"
+#include "hal/nrf_timer.h"
 #include "nrf.h"
 
-/* TIMER10 is the HP timer instance for nRF54L15 802.15.4.
- * CC[0] = sync capture, CC[1] = timestamp capture. */
 #define HP_TIMER NRF_TIMER10
 
-/* CC channel assignments */
-#define SYNC_CC      0
-#define TIMESTAMP_CC 1
+/* Upstream nrf_802154 HP timer channel layout. */
+#define CAPTURE_CC   1
+#define SYNC_CC      2
+#define TIMESTAMP_CC 3
 
-static volatile bool sync_captured;
+static uint32_t unexpected_sync;
+
+static inline uint32_t
+timer_time_get(void)
+{
+  nrf_timer_task_trigger(HP_TIMER, (nrf_timer_task_t)NRF_TIMER_TASK_CAPTURE1);
+  return nrf_timer_cc_get(HP_TIMER, (nrf_timer_cc_channel_t)CAPTURE_CC);
+}
 
 void nrf_802154_hp_timer_init(void)
 {
-  /* Configure TIMER10 as 1 MHz 32-bit timer. */
-  HP_TIMER->MODE = TIMER_MODE_MODE_Timer;
-  HP_TIMER->BITMODE = TIMER_BITMODE_BITMODE_32Bit;
-  HP_TIMER->PRESCALER = 4; /* 16 MHz / 2^4 = 1 MHz */
-
-  HP_TIMER->TASKS_CLEAR = 1;
-  sync_captured = false;
+  nrf_timer_bit_width_set(HP_TIMER, NRF_TIMER_BIT_WIDTH_32);
+  nrf_timer_prescaler_set(HP_TIMER, NRF_TIMER_FREQ_1MHz);
+  nrf_timer_mode_set(HP_TIMER, NRF_TIMER_MODE_TIMER);
 }
 
 void nrf_802154_hp_timer_deinit(void)
 {
+#if NRF_TIMER_HAS_SHUTDOWN
+  nrf_timer_task_trigger(HP_TIMER, NRF_TIMER_TASK_SHUTDOWN);
+#else
   HP_TIMER->TASKS_STOP = 1;
   HP_TIMER->TASKS_CLEAR = 1;
+#endif
 }
 
 void nrf_802154_hp_timer_start(void)
 {
-  HP_TIMER->TASKS_CLEAR = 1;
-  HP_TIMER->TASKS_START = 1;
+  nrf_timer_task_trigger(HP_TIMER, NRF_TIMER_TASK_START);
 }
 
 void nrf_802154_hp_timer_stop(void)
 {
-  HP_TIMER->TASKS_STOP = 1;
+#if NRF_TIMER_HAS_SHUTDOWN
+  nrf_timer_task_trigger(HP_TIMER, NRF_TIMER_TASK_SHUTDOWN);
+#else
+  nrf_timer_task_trigger(HP_TIMER, NRF_TIMER_TASK_STOP);
+  nrf_timer_task_trigger(HP_TIMER, NRF_TIMER_TASK_CLEAR);
+#endif
 }
 
 uint32_t nrf_802154_hp_timer_current_time_get(void)
 {
-  HP_TIMER->TASKS_CAPTURE[SYNC_CC] = 1;
-  return HP_TIMER->CC[SYNC_CC];
+  return timer_time_get();
 }
 
 uint32_t nrf_802154_hp_timer_sync_task_get(void)
 {
-  return (uint32_t)&HP_TIMER->TASKS_CAPTURE[SYNC_CC];
+  return nrf_timer_task_address_get(HP_TIMER, (nrf_timer_task_t)NRF_TIMER_TASK_CAPTURE2);
 }
 
 void nrf_802154_hp_timer_sync_prepare(void)
 {
-  HP_TIMER->EVENTS_COMPARE[SYNC_CC] = 0;
-  sync_captured = false;
+  uint32_t past_time = timer_time_get() - 1;
+
+  unexpected_sync = past_time;
+  nrf_timer_cc_set(HP_TIMER, (nrf_timer_cc_channel_t)SYNC_CC, past_time);
 }
 
 bool nrf_802154_hp_timer_sync_time_get(uint32_t *p_timestamp)
 {
-  if(!sync_captured) {
-    /* Check if a capture has happened by reading the CC register.
-     * The DPPI connection triggers TASKS_CAPTURE, so after the event
-     * the CC register contains the captured value. We use a simple flag
-     * approach -- the caller sets up the DPPI and after the event fires,
-     * the value is captured. We assume it happened if timer is running. */
-    *p_timestamp = HP_TIMER->CC[SYNC_CC];
-    sync_captured = true;
+  uint32_t sync_time = nrf_timer_cc_get(HP_TIMER, (nrf_timer_cc_channel_t)SYNC_CC);
+
+  if(sync_time != unexpected_sync) {
+    *p_timestamp = sync_time;
     return true;
   }
 
-  *p_timestamp = HP_TIMER->CC[SYNC_CC];
-  return true;
+  return false;
 }
 
 uint32_t nrf_802154_hp_timer_timestamp_task_get(void)
 {
-  return (uint32_t)&HP_TIMER->TASKS_CAPTURE[TIMESTAMP_CC];
+  return nrf_timer_task_address_get(HP_TIMER, (nrf_timer_task_t)NRF_TIMER_TASK_CAPTURE3);
 }
 
 uint32_t nrf_802154_hp_timer_timestamp_get(void)
 {
-  return HP_TIMER->CC[TIMESTAMP_CC];
+  return nrf_timer_cc_get(HP_TIMER, (nrf_timer_cc_channel_t)TIMESTAMP_CC);
 }

@@ -16,8 +16,7 @@
 #include "nrf.h"
 
 #define HP_TIMER     NRF_TIMER10
-#define TIMESTAMP_CC 1
-#define DPPIC        NRF_DPPIC10
+#define TIMESTAMP_CC 3
 
 void nrf_802154_platform_timestamper_init(void)
 {
@@ -36,7 +35,7 @@ void nrf_802154_platform_timestamper_cross_domain_connections_clear(void)
 
 void nrf_802154_platform_timestamper_local_domain_connections_setup(uint32_t dppi_ch)
 {
-  /* Subscribe TIMER10 CAPTURE[1] to the specified DPPI channel. */
+  /* Subscribe TIMER10 CAPTURE[3] to the specified DPPI channel. */
   HP_TIMER->SUBSCRIBE_CAPTURE[TIMESTAMP_CC] =
     ((uint32_t)TIMER_SUBSCRIBE_CAPTURE_EN_Enabled << TIMER_SUBSCRIBE_CAPTURE_EN_Pos) |
     (dppi_ch << TIMER_SUBSCRIBE_CAPTURE_CHIDX_Pos);
@@ -50,7 +49,7 @@ void nrf_802154_platform_timestamper_local_domain_connections_clear(uint32_t dpp
 
 bool nrf_802154_platform_timestamper_captured_timestamp_read(uint64_t *p_captured)
 {
-  /* Read the value captured in TIMER10 CC[1] by the DPPI event. */
+  /* Read the value captured in TIMER10 CC[3] by the DPPI event. */
   *p_captured = (uint64_t)HP_TIMER->CC[TIMESTAMP_CC];
   return true;
 }

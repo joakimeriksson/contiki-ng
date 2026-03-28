@@ -288,10 +288,10 @@ def autodiscover_nodes(patterns: Iterable[str], log_dir: Optional[Path] = None) 
     )
 
 
-def configure_node(node: Node, case: TestCase, interval_ms: int) -> None:
+def configure_node(node: Node, case: TestCase, interval_ms: int, verbose: int) -> None:
     commands = [
         "radio-test stop",
-        "radio-test verbose 0",
+        f"radio-test verbose {verbose}",
         f"radio-test power {case.power}",
         f"radio-test channel {case.channel}",
         f"radio-test len {case.length}",
@@ -326,10 +326,45 @@ def wait_until_idle(node: Node, timeout_s: float = 3.0) -> Dict[str, str]:
     latest = node.status()
 
     while time.monotonic() < deadline:
-        if stat_int(latest, "tx_busy") == 0 and stat_int(latest, "pending") == 0:
+        if (
+            stat_int(latest, "running") == 0
+            and stat_int(latest, "tx_busy") == 0
+            and stat_int(latest, "pending") == 0
+        ):
             return latest
         time.sleep(0.2)
         latest = node.status()
+
+    return latest
+
+
+def wait_for_receiver_settle(
+    node: Node,
+    settle_s: float = 0.5,
+    timeout_s: float = 5.0,
+) -> Dict[str, str]:
+    deadline = time.monotonic() + timeout_s
+    quiet_since: Optional[float] = None
+    latest = node.status()
+    last_rx_ok = stat_int(latest, "rx_ok")
+    last_rx_seq = stat_int(latest, "last_rx_seq")
+
+    while time.monotonic() < deadline:
+        time.sleep(0.1)
+        latest = node.status()
+        rx_ok = stat_int(latest, "rx_ok")
+        rx_seq = stat_int(latest, "last_rx_seq")
+
+        if rx_ok != last_rx_ok or rx_seq != last_rx_seq:
+            last_rx_ok = rx_ok
+            last_rx_seq = rx_seq
+            quiet_since = None
+            continue
+
+        if quiet_since is None:
+            quiet_since = time.monotonic()
+        elif time.monotonic() - quiet_since >= settle_s:
+            return latest
 
     return latest
 
@@ -359,13 +394,16 @@ def run_one_way(
     receiver.run("radio-test reset")
     sender.run(f"radio-test target {receiver.local_mac}")
 
-    sender.run("radio-test start")
-    timeout_s = (packet_count * interval_ms) / 1000.0 + 10.0
-    wait_for_sender_count(sender, packet_count, interval_ms, timeout_s)
-    sender.run("radio-test stop")
+    sender.run(f"radio-test run {packet_count}")
 
-    sender_stats = wait_until_idle(sender)
-    receiver_stats = receiver.status()
+    # Avoid polling the sender while it is transmitting: that shell traffic
+    # perturbs packet timing and can create artificial bursts. Sleep until the
+    # run should be nearly done, then verify idle state.
+    expected_run_s = (packet_count * interval_ms) / 1000.0
+    time.sleep(expected_run_s + 0.5)
+
+    sender_stats = wait_until_idle(sender, timeout_s=10.0)
+    receiver_stats = wait_for_receiver_settle(receiver)
 
     return DirectionResult(
         case=case.name,
@@ -430,6 +468,7 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     parser.add_argument("--channels", default="26", help="Comma-separated channel list, e.g. 26,20")
     parser.add_argument("--lengths", default="50", help="Comma-separated payload length list.")
     parser.add_argument("--txmax-values", default="1,3", help="Comma-separated max-MAC-transmission list.")
+    parser.add_argument("--verbose", type=int, choices=(0, 1), default=0, help="Set radio-test verbose mode.")
     parser.add_argument("--json-out", help="Write full results as JSON to this file.")
     parser.add_argument("--log-dir", help="Write one raw transcript log per serial port to this directory.")
     return parser.parse_args(argv)
@@ -471,7 +510,7 @@ def main(argv: List[str]) -> int:
         for case in cases:
             print(f"\nCase {case.name}")
             for node in nodes:
-                configure_node(node, case, args.interval_ms)
+                configure_node(node, case, args.interval_ms, args.verbose)
 
             result_ab = run_one_way(nodes[0], nodes[1], case, args.count, args.interval_ms)
             print_case_result(result_ab)

@@ -23,6 +23,13 @@ static nrf_802154_isr_t egu10_isr;
 
 void nrf_802154_irq_init(uint32_t irqn, int32_t prio, nrf_802154_isr_t isr)
 {
+  if(prio < 0) {
+    /* Match Zephyr's behaviour as closely as possible: negative priorities
+     * request zero-latency IRQs there, but bare-metal Contiki only has the
+     * NVIC priority value, so clamp to the highest programmable priority. */
+    prio = 0;
+  }
+
   if(irqn == RADIO_0_IRQn || irqn == RADIO_1_IRQn || irqn == RADIO_IRQn) {
     radio_isr = isr;
   } else if(irqn == EGU10_IRQn) {

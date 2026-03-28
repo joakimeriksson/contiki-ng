@@ -14,8 +14,6 @@
 #include "net/packetbuf.h"
 #include "net/linkaddr.h"
 #include "sys/energest.h"
-#include "sys/rtimer.h"
-
 #include "nrf_802154.h"
 #include "nrf_802154_config.h"
 #include "nrf.h"
@@ -39,13 +37,22 @@
 #define DEFAULT_CHANNEL     IEEE802154_DEFAULT_CHANNEL
 #define DEFAULT_TX_POWER    0 /* dBm */
 
+/* Use the radio timer's microsecond clock so timeouts match the nRF 802154
+ * platform backend on nRF54L15. The generic rtimer backend still uses a
+ * different tick scale on this port. */
+#define TX_DONE_TIMEOUT_US  250000ULL
+#define TX_ABORT_TIMEOUT_US 10000ULL
+#define CCA_DONE_TIMEOUT_US 50000ULL
+
 /*---------------------------------------------------------------------------*/
 /* TX buffer: [PHR byte (length)] [PSDU ...] -- nrf_802154 expects raw format */
 static uint8_t tx_buf[1 + MAX_PAYLOAD_LEN + 2]; /* +2 for FCS space */
 static volatile uint8_t tx_buf_len;
 
 /* RX state */
-#define RX_BUF_COUNT 4
+/* Match Zephyr's software staging depth to avoid dropping bursts of received
+ * frames while the upper layer drains them outside ISR context. */
+#define RX_BUF_COUNT NRF_802154_RX_BUFFERS
 static uint8_t *rx_bufs[RX_BUF_COUNT];
 static int8_t   rx_rssi[RX_BUF_COUNT];
 static uint8_t  rx_lqi[RX_BUF_COUNT];
@@ -73,6 +80,67 @@ static bool    radio_is_on;
 /*---------------------------------------------------------------------------*/
 PROCESS(nrf54l15_radio_process, "nRF54L15 radio driver");
 /*---------------------------------------------------------------------------*/
+static const char *
+tx_error_name(nrf_802154_tx_error_t error)
+{
+  switch(error) {
+  case NRF_802154_TX_ERROR_NONE:
+    return "none";
+  case NRF_802154_TX_ERROR_BUSY_CHANNEL:
+    return "busy_channel";
+  case NRF_802154_TX_ERROR_INVALID_ACK:
+    return "invalid_ack";
+  case NRF_802154_TX_ERROR_NO_MEM:
+    return "no_mem";
+  case NRF_802154_TX_ERROR_TIMESLOT_ENDED:
+    return "timeslot_ended";
+  case NRF_802154_TX_ERROR_NO_ACK:
+    return "no_ack";
+  case NRF_802154_TX_ERROR_ABORTED:
+    return "aborted";
+  case NRF_802154_TX_ERROR_TIMESLOT_DENIED:
+    return "timeslot_denied";
+  case NRF_802154_TX_ERROR_KEY_ID_INVALID:
+    return "key_id_invalid";
+  case NRF_802154_TX_ERROR_FRAME_COUNTER_ERROR:
+    return "frame_counter_error";
+  case NRF_802154_TX_ERROR_TIMESTAMP_ENCODING_ERROR:
+    return "timestamp_encoding_error";
+  case NRF_802154_TX_ERROR_INVALID_REQUEST:
+    return "invalid_request";
+  default:
+    return "unknown";
+  }
+}
+/*---------------------------------------------------------------------------*/
+static bool
+wait_for_flag(volatile bool *flag, uint64_t timeout_us)
+{
+  uint64_t deadline = nrf_802154_time_get() + timeout_us;
+
+  while(!*flag && nrf_802154_time_get() < deadline) {
+    __WFE();
+  }
+
+  return *flag;
+}
+/*---------------------------------------------------------------------------*/
+static void
+recover_to_receive_state(void)
+{
+  if(!radio_is_on) {
+    return;
+  }
+
+  if(nrf_802154_sleep()) {
+    (void)wait_for_flag(&tx_done, TX_ABORT_TIMEOUT_US);
+  }
+
+  if(!nrf_802154_receive()) {
+    LOG_WARN("Failed to restore receive state\n");
+  }
+}
+/*---------------------------------------------------------------------------*/
 static int
 init(void)
 {
@@ -86,6 +154,7 @@ init(void)
 
   /* Enable auto-ACK. */
   nrf_802154_auto_ack_set(true);
+  nrf_802154_rx_on_when_idle_set(true);
 
   /* Set PAN ID from Contiki-NG configuration. */
   uint8_t pan_id[2] = {
@@ -133,7 +202,11 @@ on(void)
   if(!radio_is_on) {
     LOG_DBG("Radio ON\n");
     ENERGEST_ON(ENERGEST_TYPE_LISTEN);
-    nrf_802154_receive();
+    if(!nrf_802154_receive()) {
+      ENERGEST_OFF(ENERGEST_TYPE_LISTEN);
+      LOG_WARN("Failed to enter receive state\n");
+      return 0;
+    }
     LOG_DBG("receive() returned, ticks=%lu\n", (unsigned long)clock_time());
     radio_is_on = true;
   }
@@ -199,40 +272,47 @@ transmit(unsigned short transmit_len)
   LOG_DBG("TX result=%u\n", tx_err);
 
   if(tx_err != NRF_802154_TX_ERROR_NONE) {
-    LOG_WARN("TX request rejected: err=%u\n", tx_err);
+    LOG_WARN("TX request rejected: %s (%u)\n", tx_error_name(tx_err), tx_err);
     ENERGEST_SWITCH(ENERGEST_TYPE_TRANSMIT, ENERGEST_TYPE_LISTEN);
-    /* Re-enter receive mode. */
-    nrf_802154_receive();
+
+    if(tx_err == NRF_802154_TX_ERROR_BUSY_CHANNEL) {
+      recover_to_receive_state();
+      return RADIO_TX_COLLISION;
+    }
+
+    if(tx_err == NRF_802154_TX_ERROR_INVALID_ACK ||
+       tx_err == NRF_802154_TX_ERROR_NO_ACK) {
+      return RADIO_TX_NOACK;
+    }
+
     return RADIO_TX_ERR;
   }
 
   /* Wait for TX completion callback with timeout. */
-  {
-    volatile uint32_t timeout = 0;
-    while(!tx_done && timeout < 1000000) {
-      timeout++;
-    }
-    if(!tx_done) {
-      LOG_WARN("TX timeout after busy-wait\n");
-      ENERGEST_SWITCH(ENERGEST_TYPE_TRANSMIT, ENERGEST_TYPE_LISTEN);
-      nrf_802154_receive();
-      return RADIO_TX_ERR;
-    }
+  if(!wait_for_flag(&tx_done, TX_DONE_TIMEOUT_US)) {
+    /* The frame was accepted for transmission, but we missed completion.
+     * Treat this as a retryable ACK-side miss instead of a hard MAC error. */
+    LOG_WARN("TX completion timeout; treating as no_ack\n");
+    ENERGEST_SWITCH(ENERGEST_TYPE_TRANSMIT, ENERGEST_TYPE_LISTEN);
+    recover_to_receive_state();
+    tx_error = NRF_802154_TX_ERROR_NO_ACK;
+    return RADIO_TX_NOACK;
   }
 
   ENERGEST_SWITCH(ENERGEST_TYPE_TRANSMIT, ENERGEST_TYPE_LISTEN);
-
-  /* Re-enter receive mode. */
-  nrf_802154_receive();
 
   if(tx_success) {
     LOG_DBG("TX OK %u bytes on ch %u\n", tx_buf[0], current_channel);
     return RADIO_TX_OK;
   }
 
-  if(tx_error == NRF_802154_TX_ERROR_NO_ACK ||
-     tx_error == NRF_802154_TX_ERROR_INVALID_ACK) {
-    LOG_WARN("TX failed: no ACK (err=%u)\n", tx_error);
+  if(tx_error == NRF_802154_TX_ERROR_NO_ACK) {
+    LOG_WARN("TX failed: no ACK\n");
+    return RADIO_TX_NOACK;
+  }
+
+  if(tx_error == NRF_802154_TX_ERROR_INVALID_ACK) {
+    LOG_WARN("TX failed: invalid ACK\n");
     return RADIO_TX_NOACK;
   }
 
@@ -241,7 +321,7 @@ transmit(unsigned short transmit_len)
     return RADIO_TX_COLLISION;
   }
 
-  LOG_WARN("TX failed: err=%u\n", tx_error);
+  LOG_WARN("TX failed: %s (%u)\n", tx_error_name(tx_error), tx_error);
   return RADIO_TX_ERR;
 }
 /*---------------------------------------------------------------------------*/
@@ -311,20 +391,11 @@ channel_clear(void)
   }
 
   /* Wait for CCA completion callback with timeout. */
-  {
-    volatile uint32_t timeout = 0;
-    while(!cca_done && timeout < 500000) {
-      timeout++;
-    }
-    if(!cca_done) {
-      LOG_WARN("CCA timeout\n");
-      nrf_802154_receive();
-      return 0;
-    }
+  if(!wait_for_flag(&cca_done, CCA_DONE_TIMEOUT_US)) {
+    LOG_WARN("CCA timeout\n");
+    recover_to_receive_state();
+    return 0;
   }
-
-  /* Re-enter receive mode. */
-  nrf_802154_receive();
 
   return cca_free ? 1 : 0;
 }
@@ -617,6 +688,7 @@ PROCESS_THREAD(nrf54l15_radio_process, ev, data)
 
     /* Deliver all pending received frames to the MAC layer. */
     while(pending_packet()) {
+      packetbuf_clear();
       int len = radio_read(packetbuf_dataptr(), PACKETBUF_SIZE);
       if(len > 0) {
         packetbuf_set_datalen(len);
