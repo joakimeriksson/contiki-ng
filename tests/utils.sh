@@ -72,7 +72,8 @@ function kill_bg( )
     SIGNAL=${2:-9}
     if [[ ${CMD:0:5} == "sudo " ]] ; then
         SUDO="sudo "
-        TOKILL=$(ps --ppid $PID -o pid=)
+        # pgrep -P is portable (Linux and macOS); ps --ppid is Linux-only
+        TOKILL=$(pgrep -P $PID)
     fi
     echo_run ${SUDO}kill -$SIGNAL $TOKILL
 }
@@ -134,7 +135,8 @@ function wait_log_assert( )
   fi
   # Wait until log file contains string
   report_start "$NAME"
-  $CMD_TIMEOUT $TIMEOUT grep -q "$STR" <(tail -n +1 -f --retry $FILE 2>/dev/null)
+  # tail -F is portable (GNU: --follow=name --retry; BSD tail behaves the same)
+  $CMD_TIMEOUT $TIMEOUT grep -q "$STR" <(tail -n +1 -F $FILE 2>/dev/null)
   if grep -q "$STR" $FILE; then
     report_end_success $TIMEOUT
   else
