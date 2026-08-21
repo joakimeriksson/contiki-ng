@@ -1,0 +1,145 @@
+# Run the Cooja simulation test suite with Cooja-NG (CoNGSim) instead of Cooja.
+#
+# Experimental / measurement workflow. Cooja-NG is a C re-implementation of the
+# parts of Cooja + MSPSim that the test suite needs (no JVM, no Gradle). It is
+# fetched as a prebuilt release tarball, so the only work on the runner is
+# compiling the test firmware and running the simulations.
+#
+# Runs the same tests/??-*/??-*.csc files as the "CI" workflow; one job per
+# test directory so the wall-clock time can be compared side by side with the
+# Cooja-based jobs, plus one job running the whole suite in a single go.
+name: Cooja-NG
+
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master, develop, release-* ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  COOJA_NG_REPO: joakimeriksson/cooja-ng
+  COOJA_NG_VERSION: v0.2.0
+  DOCKER_BASE_IMG: contiker/contiki-ng
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_ANALYTICS: 1
+
+jobs:
+  Cooja-NG:
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-15-intel ]
+        # Directory glob passed to run-cooja-tests.sh; "all" runs everything.
+        test: [ all, simulation-base, ipv6, ieee802154, rpl-lite, rpl-classic, tun-rpl-br, security-protocols ]
+        exclude:
+          # Border-router tests need a TUN device and root: Linux/docker only.
+          - os: macos-15-intel
+            test: tun-rpl-br
+    name: ${{ matrix.test }}/${{ matrix.os == 'macos-15-intel' && 'macos-x64' || matrix.os }}
+    runs-on: ${{ matrix.os }}
+    steps:
+    - name: Checkout github repo
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: 2
+        submodules: 'recursive'
+        persist-credentials: false
+
+    - name: Download Cooja-NG release
+      run: |
+        case "${{ matrix.os }}" in
+          ubuntu-latest)  TARGET=linux-x86_64 ;;
+          macos-15-intel) TARGET=macos-x64 ;;
+        esac
+        PKG=cooja-ng-$COOJA_NG_VERSION-$TARGET
+        URL=https://github.com/$COOJA_NG_REPO/releases/download/$COOJA_NG_VERSION
+        curl -sSfL -o $PKG.tar.gz $URL/$PKG.tar.gz
+        curl -sSfL -o SHA256SUMS $URL/SHA256SUMS
+        grep " $PKG.tar.gz\$" SHA256SUMS | shasum -a 256 -c -
+        tar xzf $PKG.tar.gz
+        mv $PKG cooja-ng
+        echo COOJA_NG_DIR=$(pwd)/cooja-ng >> $GITHUB_ENV
+        ./cooja-ng/build/test_runner --version
+
+    - name: install macOS software
+      if: matrix.os == 'macos-15-intel'
+      run: |
+        brew install coreutils make
+        wget -nv https://github.com/pjonsson/msp430gcc-binary/releases/download/v1.1/mspgcc-4.7.4-macos-x86_64.tar.bz2
+        sudo tar xf mspgcc*.tar.bz2 -C /usr/local --strip-components=1 --no-same-owner
+        # GNU make 4.x, GNU tar and GNU coreutils (timeout) first in PATH.
+        echo "/usr/local/opt/make/libexec/gnubin" >> $GITHUB_PATH
+        echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
+        echo "/usr/local/opt/coreutils/libexec/gnubin" >> $GITHUB_PATH
+
+    # Same image selection as the CI workflow; fall back to :develop when the
+    # per-commit image is not on dockerhub (PRs, forks).
+    - name: Pull docker image
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        tools/docker/print-dockerhash.sh >> $GITHUB_ENV
+        source $GITHUB_ENV
+        docker pull $DOCKER_IMG || echo DOCKER_IMG=$DOCKER_BASE_IMG:develop >> $GITHUB_ENV
+
+    - name: Execute tests (docker)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        PATTERN="??-${{ matrix.test }}"; [ "${{ matrix.test }}" = all ] && PATTERN="*"
+        TUN=""; [ "${{ matrix.test }}" = tun-rpl-br ] && TUN="--with-tun"
+        # Run as root (override the user-remapping entrypoint) so the
+        # border-router tests can create a TUN device.
+        docker run --privileged --sysctl net.ipv6.conf.all.disable_ipv6=0 \
+          --entrypoint bash \
+          -v `pwd`:/home/user/contiki-ng \
+          -e CONTIKI_DIR=/home/user/contiki-ng \
+          -e CI=true \
+          $DOCKER_IMG -c "
+            set -e
+            cd /home/user/contiki-ng
+            if [ -n \"$TUN\" ]; then
+              make -C tools/serial-io tunslip6
+              make -C examples/rpl-border-router TARGET=native border-router.native
+            fi
+            # Must run from the cooja-ng dir: firmware paths are cwd-relative.
+            cd cooja-ng
+            time tools/run-cooja-tests.sh $TUN '$PATTERN'" 2>&1 | tee cooja-ng.log
+
+    - name: Execute tests (macOS)
+      if: matrix.os == 'macos-15-intel'
+      run: |
+        PATTERN="??-${{ matrix.test }}"; [ "${{ matrix.test }}" = all ] && PATTERN="*"
+        export CONTIKI_DIR=$(pwd)
+        # Must run from the cooja-ng dir: firmware paths are cwd-relative.
+        cd cooja-ng
+        time tools/run-cooja-tests.sh "$PATTERN" 2>&1 | tee ../cooja-ng.log
+
+    # run-cooja-tests.sh exits 0 when every test is skipped (e.g. firmware
+    # failed to build), so check for that explicitly.
+    - name: Check outcome
+      run: |
+        grep -E '^\s+Passed: [1-9]' cooja-ng.log
+        ! grep -E '^\s+SKIP .*(missing|no test criteria)' cooja-ng.log
+        ! grep -E '^\s+ERROR ' cooja-ng.log
+
+    - name: Summary
+      if: always()
+      run: |
+        {
+          echo "### Cooja-NG ${{ matrix.test }} (${{ matrix.os }})"
+          echo '```'
+          grep -E '^\s+(RUN|PASS|FAIL|SKIP|ERROR|NEED)|^\s+(Total|Passed|Failed|Skipped|Errors):|^real' cooja-ng.log || true
+          echo '```'
+        } >> $GITHUB_STEP_SUMMARY
+
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: cooja-ng-${{ matrix.test }}-${{ matrix.os }}
+        path: cooja-ng.log
