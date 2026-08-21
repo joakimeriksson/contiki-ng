@@ -64,6 +64,14 @@ jobs:
         grep " $PKG.tar.gz\$" SHA256SUMS | shasum -a 256 -c -
         tar xzf $PKG.tar.gz
         mv $PKG cooja-ng
+        # The v0.2.0 tarball lacks the serial-socket host wrapper that
+        # csc2json.py points the 17-tun-rpl-br tests at; take it from the
+        # tag until a release ships it (joakimeriksson/cooja-ng#14).
+        if [ ! -f cooja-ng/tools/test-border-router.sh ]; then
+          curl -sSfL -o cooja-ng/tools/test-border-router.sh \
+            https://raw.githubusercontent.com/$COOJA_NG_REPO/$COOJA_NG_VERSION/tools/test-border-router.sh
+          chmod +x cooja-ng/tools/test-border-router.sh
+        fi
         echo COOJA_NG_DIR=$(pwd)/cooja-ng >> $GITHUB_ENV
         ./cooja-ng/build/test_runner --version
 
@@ -106,6 +114,7 @@ jobs:
     - name: Execute tests (docker)
       if: matrix.os == 'ubuntu-latest'
       run: |
+        set -o pipefail
         PATTERN="??-${{ matrix.test }}"; [ "${{ matrix.test }}" = all ] && PATTERN="*"
         TUN=""; [ "${{ matrix.test }}" = tun-rpl-br ] && TUN="--with-tun"
         # Run as root (override the user-remapping entrypoint) so the
@@ -135,6 +144,7 @@ jobs:
     - name: Execute tests (macOS)
       if: matrix.os == 'macos-15-intel'
       run: |
+        set -o pipefail
         PATTERN="??-${{ matrix.test }}"; [ "${{ matrix.test }}" = all ] && PATTERN="*"
         export CONTIKI_DIR=$(pwd)
         export RELSTR=citest
@@ -144,10 +154,11 @@ jobs:
         ccache -s
 
     # run-cooja-tests.sh exits 0 when every test is skipped (e.g. firmware
-    # failed to build), so check for that explicitly.
+    # failed to build), so check the result lines explicitly.
     - name: Check outcome
       run: |
         grep -E '^\s+Passed: [1-9]' cooja-ng.log
+        grep -E '^\s+Failed: 0$' cooja-ng.log
         ! grep -E '^\s+SKIP .*(missing|no test criteria)' cooja-ng.log
         ! grep -E '^\s+ERROR ' cooja-ng.log
 
