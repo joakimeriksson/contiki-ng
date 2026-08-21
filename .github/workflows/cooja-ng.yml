@@ -70,13 +70,29 @@ jobs:
     - name: install macOS software
       if: matrix.os == 'macos-15-intel'
       run: |
-        brew install coreutils make
+        brew install ccache coreutils make
         wget -nv https://github.com/pjonsson/msp430gcc-binary/releases/download/v1.1/mspgcc-4.7.4-macos-x86_64.tar.bz2
         sudo tar xf mspgcc*.tar.bz2 -C /usr/local --strip-components=1 --no-same-owner
         # GNU make 4.x, GNU tar and GNU coreutils (timeout) first in PATH.
         echo "/usr/local/opt/make/libexec/gnubin" >> $GITHUB_PATH
         echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
         echo "/usr/local/opt/coreutils/libexec/gnubin" >> $GITHUB_PATH
+
+    # ccache, set up exactly like the CI workflow so firmware build time is
+    # comparable: same ccache binary on the host (the action reads stats with
+    # it), same cache directory mounted into the container.
+    - name: install ccache
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        wget -nv https://github.com/ccache/ccache/releases/download/v4.10.2/ccache-4.10.2-linux-x86_64.tar.xz
+        sudo tar xf ccache-4.10.2-linux-x86_64.tar.xz -C /usr/bin --strip-components=1 --no-same-owner ccache-4.10.2-linux-x86_64/ccache
+        rm -f ccache-*-linux-x86_64.tar.xz
+
+    - name: ccache
+      uses: hendrikmuhs/ccache-action@v1.2.23
+      with:
+        key: cooja-ng-${{ matrix.test }}
+        max-size: 160M
 
     # Same image selection as the CI workflow; fall back to :develop when the
     # per-commit image is not on dockerhub (PRs, forks).
@@ -99,25 +115,33 @@ jobs:
           -v `pwd`:/home/user/contiki-ng \
           -e CONTIKI_DIR=/home/user/contiki-ng \
           -e CI=true \
+          -v $GITHUB_WORKSPACE/.ccache:/home/user/.ccache \
           $DOCKER_IMG -c "
             set -e
             cd /home/user/contiki-ng
+            # Static version string (as cimake in the CI image) so ccache
+            # gets direct hits across runs.
+            export RELSTR=citest
+            ccache --set-config=max_size=160M
             if [ -n \"$TUN\" ]; then
               make -C tools/serial-io tunslip6
               make -C examples/rpl-border-router TARGET=native border-router.native
             fi
             # Must run from the cooja-ng dir: firmware paths are cwd-relative.
             cd cooja-ng
-            time tools/run-cooja-tests.sh $TUN '$PATTERN'" 2>&1 | tee cooja-ng.log
+            time tools/run-cooja-tests.sh $TUN '$PATTERN'
+            ccache -s" 2>&1 | tee cooja-ng.log
 
     - name: Execute tests (macOS)
       if: matrix.os == 'macos-15-intel'
       run: |
         PATTERN="??-${{ matrix.test }}"; [ "${{ matrix.test }}" = all ] && PATTERN="*"
         export CONTIKI_DIR=$(pwd)
+        export RELSTR=citest
         # Must run from the cooja-ng dir: firmware paths are cwd-relative.
         cd cooja-ng
         time tools/run-cooja-tests.sh "$PATTERN" 2>&1 | tee ../cooja-ng.log
+        ccache -s
 
     # run-cooja-tests.sh exits 0 when every test is skipped (e.g. firmware
     # failed to build), so check for that explicitly.
