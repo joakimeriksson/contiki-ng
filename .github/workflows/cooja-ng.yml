@@ -148,7 +148,10 @@ jobs:
     - name: z1 build diagnostic (macOS)
       if: matrix.os == 'macos-15-intel' && (matrix.test == 'all' || matrix.test == 'simulation-base')
       run: |
-        make -C examples/hello-world -j3 TARGET=z1 hello-world.z1 WERROR=0 COOJA_CI=1 2>&1 | tail -40 || true
+        echo "--- motelist-zolertia-macos -c output (raw):"
+        tools/zolertia/motelist-zolertia-macos -c 2>&1 | od -c | head -20 || true
+        echo "--- hello-world.z1 build:"
+        make -C examples/hello-world -j3 TARGET=z1 hello-world.z1 WERROR=0 COOJA_CI=1 2>&1 | tail -5 || true
         make -C examples/hello-world TARGET=z1 clean >/dev/null 2>&1 || true
 
     - name: Execute tests (macOS)
@@ -176,6 +179,7 @@ jobs:
         grep -E '^[[:space:]]+Passed: [1-9]' cooja-ng.log
         grep -E '^[[:space:]]+Failed: 0$' cooja-ng.log
         ! grep -E '^[[:space:]]+SKIP .*(missing|no test criteria)' cooja-ng.log
+        ! grep -E '^[[:space:]]+Skipped: [1-9]' cooja-ng.log
         ! grep -E '^[[:space:]]+ERROR ' cooja-ng.log
 
     - name: Summary
