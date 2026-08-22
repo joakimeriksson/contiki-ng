@@ -36,12 +36,9 @@ jobs:
       matrix:
         os: [ ubuntu-latest, macos-15-intel ]
         # Directory glob passed to run-cooja-tests.sh; "all" runs everything
-        # (all 93 tests on Linux; macOS cannot run the 8 TUN tests).
+        # (all 93 tests, TUN included: tunslip6 and border-router.native both
+        # support utun on macOS, and the runners have passwordless sudo).
         test: [ all, simulation-base, ipv6, ieee802154, rpl-lite, rpl-classic, tun-rpl-br, security-protocols ]
-        exclude:
-          # Border-router tests need a TUN device and root: Linux/docker only.
-          - os: macos-15-intel
-            test: tun-rpl-br
     name: ${{ matrix.test }}/${{ matrix.os == 'macos-15-intel' && 'macos-x64' || matrix.os }}
     runs-on: ${{ matrix.os }}
     steps:
@@ -118,7 +115,7 @@ jobs:
         set -o pipefail
         PATTERN="??-${{ matrix.test }}"; [ "${{ matrix.test }}" = all ] && PATTERN="*"
         # Border-router tests need TUN + root: run them in the tun-rpl-br job
-        # and, on Linux, as part of "all" so that job covers all 93 tests.
+        # and as part of "all" so that job covers all 93 tests.
         TUN=""
         case "${{ matrix.test }}" in all|tun-rpl-br) TUN="--with-tun" ;; esac
         # Run as root (override the user-remapping entrypoint) so the
@@ -150,11 +147,17 @@ jobs:
       run: |
         set -o pipefail
         PATTERN="??-${{ matrix.test }}"; [ "${{ matrix.test }}" = all ] && PATTERN="*"
+        TUN=""
+        case "${{ matrix.test }}" in all|tun-rpl-br) TUN="--with-tun" ;; esac
         export CONTIKI_DIR=$(pwd)
         export RELSTR=citest
+        if [ -n "$TUN" ]; then
+          make -C tools/serial-io tunslip6
+          make -C examples/rpl-border-router TARGET=native border-router.native
+        fi
         # Must run from the cooja-ng dir: firmware paths are cwd-relative.
         cd cooja-ng
-        time tools/run-cooja-tests.sh "$PATTERN" 2>&1 | tee ../cooja-ng.log
+        time tools/run-cooja-tests.sh $TUN "$PATTERN" 2>&1 | tee ../cooja-ng.log
         ccache -s
 
     # run-cooja-tests.sh exits 0 when every test is skipped (e.g. firmware
