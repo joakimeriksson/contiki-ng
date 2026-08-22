@@ -76,7 +76,7 @@ jobs:
     - name: install macOS software
       if: matrix.os == 'macos-15-intel'
       run: |
-        brew install ccache coreutils make
+        brew install ccache coreutils make mtr
         wget -nv https://github.com/pjonsson/msp430gcc-binary/releases/download/v1.1/mspgcc-4.7.4-macos-x86_64.tar.bz2
         sudo tar xf mspgcc*.tar.bz2 -C /usr/local --strip-components=1 --no-same-owner
         # GNU make 4.x, GNU tar and GNU coreutils (timeout) first in PATH.
@@ -141,6 +141,15 @@ jobs:
             cd cooja-ng
             time tools/run-cooja-tests.sh $TUN '$PATTERN'
             ccache -s" 2>&1 | tee cooja-ng.log
+
+    # TEMPORARY diagnostic: hello-world.z1 fails to build on macOS in the
+    # test runner (sky with the same toolchain is fine) and the firmware
+    # build script hides the compiler output.
+    - name: z1 build diagnostic (macOS)
+      if: matrix.os == 'macos-15-intel' && (matrix.test == 'all' || matrix.test == 'simulation-base')
+      run: |
+        make -C examples/hello-world -j3 TARGET=z1 hello-world.z1 WERROR=0 COOJA_CI=1 2>&1 | tail -40 || true
+        make -C examples/hello-world TARGET=z1 clean >/dev/null 2>&1 || true
 
     - name: Execute tests (macOS)
       if: matrix.os == 'macos-15-intel'
