@@ -226,7 +226,15 @@ jobs:
         # is successful with empty cache.
         find tools/cooja/build tools/cooja/.gradle -exec touch {} \; 2>/dev/null || true
         source ~/.bashrc
+        # Capture utun traffic once the BR creates the device.
+        ( for i in $(seq 1 180); do
+            ifconfig utun10 >/dev/null 2>&1 && break; sleep 1;
+          done
+          sudo tcpdump -i utun10 -w $PWD/utun10.pcap >/dev/null 2>&1 ) &
         make -C tests/??-${{ matrix.test }} || true
+        sudo pkill tcpdump || true
+        sleep 1
+        sudo tcpdump -nr utun10.pcap 2>/dev/null | head -60 || true
         ./tests/check-test.sh `pwd`/tests/??-${{ matrix.test }} || true
         ifconfig utun10 || true
         netstat -rn -f inet6 | head -40 || true
@@ -239,3 +247,4 @@ jobs:
         path: |
           tests/17-tun-rpl-br/COOJA.testlog
           tests/17-tun-rpl-br/*.testlog
+          utun10.pcap
