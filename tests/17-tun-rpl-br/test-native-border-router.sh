@@ -23,7 +23,7 @@ COUNT=5
 
 # Connect to the simulation
 echo "Starting native border-router"
-make -C $CONTIKI/examples/rpl-border-router -B connect-router-cooja TARGET=native ROUTER_ARGS="-v5 fd00::1/64" &
+make -C $CONTIKI/examples/rpl-border-router -B connect-router-cooja TARGET=native &
 MPID=$!
 printf "Waiting for network formation (%d seconds)\n" "$WAIT_TIME"
 sleep $WAIT_TIME
