@@ -163,7 +163,7 @@ $(MAKE) -j$(CPUS) hello-world.cooja TARGET=cooja</commands>
  * Native BR test, as the Native BR will run as a
  * unix process, at real time. */
 sim.setSpeedLimit(1.0);
-while (true) { YIELD(); }</script>
+while (true) { YIELD(); log.log(time + " " + id + " " + msg + "\n"); }</script>
       <active>true</active>
     </plugin_config>
     <bounds x="1037" y="40" height="700" width="600" />
