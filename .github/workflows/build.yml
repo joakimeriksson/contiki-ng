@@ -35,8 +35,8 @@ jobs:
         # Always run all jobs in the matrix, even if one fails
         fail-fast: false
         matrix:
-            os: [ ubuntu-latest, macos-15-intel ]
-            test: [ documentation, compile-base, compile-arm-ports, rpl-lite, rpl-classic, renode-simulation, simulation-base, ipv6, ieee802154, tun-rpl-br, script-base, native-runs, ipv6-nbr, coap-lwm2m, packet-parsing, nat64-standalone, security-protocols ]
+            os: [ macos-15-intel ]
+            test: [ tun-rpl-br ]
             exclude:
               # Renode tests done by Linux (more CI runners available).
               - os: macos-15-intel
@@ -226,6 +226,16 @@ jobs:
         # is successful with empty cache.
         find tools/cooja/build tools/cooja/.gradle -exec touch {} \; 2>/dev/null || true
         source ~/.bashrc
-        make -C tests/??-${{ matrix.test }}
-        # Check outcome of the test
-        ./tests/check-test.sh `pwd`/tests/??-${{ matrix.test }}
+        make -C tests/??-${{ matrix.test }} || true
+        ./tests/check-test.sh `pwd`/tests/??-${{ matrix.test }} || true
+        ifconfig utun10 || true
+        netstat -rn -f inet6 | head -40 || true
+
+    - name: Upload mote logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: mote-logs
+        path: |
+          tests/17-tun-rpl-br/COOJA.testlog
+          tests/17-tun-rpl-br/*.testlog

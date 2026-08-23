@@ -1,0 +1,76 @@
+[INFO: Main      ] Starting Contiki-NG-develop/v5.2-20-g8825a61e0
+[INFO: Main      ] - Routing: RPL Lite
+[INFO: Main      ] - Net: sicslowpan
+[INFO: Main      ] - MAC: br-mac
+[INFO: Main      ] - 802.15.4 PANID: 0xabcd
+[INFO: Main      ] - 802.15.4 Default channel: 26
+[INFO: Main      ] Node ID: 1800
+[INFO: Main      ] Link-layer address: 0102.0304.0506.0708
+[INFO: Main      ] Tentative link-local IPv6 address: fe80::302:304:506:708
+[INFO: Native    ] Added global IPv6 address fd00::302:304:506:708
+[INFO: RPL BR    ] Contiki-NG Border Router started
+[INFO: BR        ] RPL-Border router started
+********SLIP opened to ``localhost:60001''
+[INFO: NAT64     ] Socket-based NAT64 initialized (128 max sessions)
+[INFO: Native    ] stdin closed (EOF); no longer monitoring stdin
+[INFO: BR        ] Setting prefix fd00::1
+[INFO: BR        ] Server IPv6 addresses:
+[INFO: BR        ]   fd00::201:1:1:1
+[INFO: BR        ]   fe80::201:1:1:1
+[INFO: NAT64     ] tcp_output: flags=0x02 data=0 seq=0
+[INFO: NAT64     ] TCP SYN: port 1026 -> 127.0.0.1:5558
+[INFO: NAT64     ] TCP connected to 127.0.0.1:5558 (fd 7)
+[INFO: NAT64     ] TCP established: sending SYN-ACK
+[INFO: NAT64     ] inject_tcp: 60 bytes, flags=0x12 seq=1241590137 ack=1
+[INFO: NAT64     ] tcp_output: flags=0x18 data=6 seq=1
+[INFO: NAT64     ] TCP forwarding 6 bytes to IPv4 server
+[INFO: NAT64     ] TCP sent 6 bytes to server (fd 7)
+[INFO: NAT64     ] inject_tcp: 60 bytes, flags=0x10 seq=1241590138 ack=7
+[INFO: NAT64     ] TCP recv 6 bytes from server (fd 7)
+[INFO: NAT64     ] TCP paced: 6/6 bytes -> IoT node
+[INFO: NAT64     ] inject_tcp: 66 bytes, flags=0x18 seq=1241590138 ack=7
+[INFO: NAT64     ] TCP server closed connection (fd 7)
+[INFO: NAT64     ] TCP remote closed: deferring FIN (6 bytes pending)
+[INFO: NAT64     ] tcp_output: flags=0x10 data=0 seq=7
+[INFO: NAT64     ] TCP deferred FIN: sending now
+[INFO: NAT64     ] inject_tcp: 60 bytes, flags=0x11 seq=1241590144 ack=7
+[INFO: NAT64     ] TCP FIN from IoT node (half-close)
+[INFO: NAT64     ] TCP both sides FIN'd, destroying session
+[INFO: NAT64     ] tcp_output: flags=0x02 data=0 seq=0
+[INFO: NAT64     ] TCP SYN: port 1026 -> 127.0.0.1:5558
+[INFO: NAT64     ] TCP connected to 127.0.0.1:5558 (fd 8)
+[INFO: NAT64     ] TCP established: sending SYN-ACK
+[INFO: NAT64     ] inject_tcp: 60 bytes, flags=0x12 seq=2469910872 ack=1
+[INFO: NAT64     ] tcp_output: flags=0x18 data=6 seq=1
+[INFO: NAT64     ] TCP forwarding 6 bytes to IPv4 server
+[INFO: NAT64     ] TCP sent 6 bytes to server (fd 8)
+[INFO: NAT64     ] inject_tcp: 60 bytes, flags=0x10 seq=2469910873 ack=7
+[INFO: NAT64     ] TCP recv 6 bytes from server (fd 8)
+[INFO: NAT64     ] TCP paced: 6/6 bytes -> IoT node
+[INFO: NAT64     ] inject_tcp: 66 bytes, flags=0x18 seq=2469910873 ack=7
+[INFO: NAT64     ] TCP server closed connection (fd 8)
+[INFO: NAT64     ] TCP remote closed: deferring FIN (6 bytes pending)
+[INFO: NAT64     ] tcp_output: flags=0x10 data=0 seq=7
+[INFO: NAT64     ] TCP deferred FIN: sending now
+[INFO: NAT64     ] inject_tcp: 60 bytes, flags=0x11 seq=2469910879 ack=7
+[INFO: NAT64     ] TCP FIN from IoT node (half-close)
+[INFO: NAT64     ] TCP both sides FIN'd, destroying session
+[INFO: NAT64     ] tcp_output: flags=0x02 data=0 seq=0
+[INFO: NAT64     ] TCP SYN: port 1026 -> 127.0.0.1:5558
+[INFO: NAT64     ] TCP connected to 127.0.0.1:5558 (fd 9)
+[INFO: NAT64     ] TCP established: sending SYN-ACK
+[INFO: NAT64     ] inject_tcp: 60 bytes, flags=0x12 seq=2832646914 ack=1
+[INFO: NAT64     ] tcp_output: flags=0x18 data=6 seq=1
+[INFO: NAT64     ] TCP forwarding 6 bytes to IPv4 server
+[INFO: NAT64     ] TCP sent 6 bytes to server (fd 9)
+[INFO: NAT64     ] inject_tcp: 60 bytes, flags=0x10 seq=2832646915 ack=7
+[INFO: NAT64     ] TCP recv 6 bytes from server (fd 9)
+[INFO: NAT64     ] TCP paced: 6/6 bytes -> IoT node
+[INFO: NAT64     ] inject_tcp: 66 bytes, flags=0x18 seq=2832646915 ack=7
+[INFO: NAT64     ] TCP server closed connection (fd 9)
+[INFO: NAT64     ] TCP remote closed: deferring FIN (6 bytes pending)
+[INFO: NAT64     ] tcp_output: flags=0x10 data=0 seq=7
+[INFO: NAT64     ] TCP deferred FIN: sending now
+[INFO: NAT64     ] inject_tcp: 60 bytes, flags=0x11 seq=2832646921 ack=7
+[INFO: NAT64     ] TCP FIN from IoT node (half-close)
+[INFO: NAT64     ] TCP both sides FIN'd, destroying session
