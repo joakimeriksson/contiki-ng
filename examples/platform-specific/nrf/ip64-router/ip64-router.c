@@ -65,6 +65,9 @@
  *   nc -u -l 7777
  */
 #ifdef NAT64_TEST_ADDR
+#ifndef NAT64_TEST_PORT
+#define NAT64_TEST_PORT 7777
+#endif
 /*
  * Indirection so NAT64_TEST_ADDR's four octets are macro-expanded before
  * uip_nat64addr() counts its arguments.

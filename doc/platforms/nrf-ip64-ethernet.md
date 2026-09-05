@@ -140,10 +140,12 @@ unroutable destination takes the same uIP fallback path
     cd examples/platform-specific/nrf/nat64-node
     make TARGET=nrf BOARD=nrf54l15/xiao nat64-node.flash
 
-Joins the RPL network and sends UDP to an IPv4 host, which exercises what the
-router's self-test cannot: the forwarding hop, and a per-source entry in
-ip64's address map. With both running, a listener sees one IPv4 source address
-and two distinct mapped ports.
+Joins the RPL network and, with `NAT64_TEST_ADDR` defined in its
+`project-conf.h` the same way as for the router, sends UDP to that IPv4 host.
+This exercises what the router's self-test cannot: the forwarding hop, and a
+per-source entry in ip64's address map. With both probes enabled, a listener
+sees one IPv4 source address and two distinct mapped ports. Neither probe is
+on by default, so a stock build does not send traffic to anyone's LAN.
 
 It also resolves a hostname through DNS64, pointing the resolver at a public
 IPv4 DNS server via the NAT64 prefix:

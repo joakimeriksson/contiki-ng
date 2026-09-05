@@ -73,11 +73,13 @@
 /*---------------------------------------------------------------------------*/
 /*---------------------------------------------------------------------------*/
 /*
- * NAT64 self-test target: an IPv4 host reachable from the Ethernet side,
- * given as four comma-separated octets. Comment out to disable the test.
- * Run a listener there with:  nc -u -l 7777
+ * Optional NAT64 self-test: with NAT64_TEST_ADDR defined, the router sends a
+ * UDP datagram every few seconds to that IPv4 host through its own NAT64
+ * prefix. Off by default; enable it by defining the target as four
+ * comma-separated octets and running a listener there with  nc -u -l 7777
+ *
+ *   #define NAT64_TEST_ADDR  192, 168, 1, 10
+ *   #define NAT64_TEST_PORT  7777
  */
-#define NAT64_TEST_ADDR  192, 168, 101, 185
-#define NAT64_TEST_PORT  7777
 /*---------------------------------------------------------------------------*/
 #endif /* PROJECT_CONF_H_ */

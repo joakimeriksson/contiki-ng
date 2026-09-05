@@ -53,11 +53,17 @@
 
 #include <stdio.h>
 /*---------------------------------------------------------------------------*/
-#ifndef NAT64_TEST_ADDR
-#define NAT64_TEST_ADDR 192, 168, 101, 185
-#endif
+/*
+ * Optional UDP probe. With NAT64_TEST_ADDR defined as four comma-separated
+ * octets, the node sends a datagram every SEND_INTERVAL to that IPv4 host
+ * through the border router's NAT64 prefix; run  nc -u -l 7777  there to see
+ * it arrive. Off by default so an in-tree build does not talk to anyone's
+ * LAN. The DNS64 lookup below runs regardless.
+ */
+#ifdef NAT64_TEST_ADDR
 #ifndef NAT64_TEST_PORT
 #define NAT64_TEST_PORT 7777
+#endif
 #endif
 
 #define SEND_INTERVAL (CLOCK_SECOND * 5)
@@ -80,11 +86,14 @@
 /* Expand the octets before uip_nat64addr() counts its arguments. */
 #define NAT64_SET_DEST(addr, ...) uip_nat64addr(addr, __VA_ARGS__)
 /*---------------------------------------------------------------------------*/
+#ifdef NAT64_TEST_ADDR
 static struct simple_udp_connection conn;
+#endif
 /*---------------------------------------------------------------------------*/
 PROCESS(nat64_node_process, "NAT64 node");
 AUTOSTART_PROCESSES(&nat64_node_process);
 /*---------------------------------------------------------------------------*/
+#ifdef NAT64_TEST_ADDR
 static void
 rx(struct simple_udp_connection *c, const uip_ipaddr_t *sender_addr,
    uint16_t sender_port, const uip_ipaddr_t *receiver_addr,
@@ -94,12 +103,15 @@ rx(struct simple_udp_connection *c, const uip_ipaddr_t *sender_addr,
   uip_debug_ipaddr_print(sender_addr);
   printf("\n");
 }
+#endif /* NAT64_TEST_ADDR */
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(nat64_node_process, ev, data)
 {
   static struct etimer periodic;
+#ifdef NAT64_TEST_ADDR
   static uip_ipaddr_t dest;
   static unsigned long sent;
+#endif
   static int joined;
   static uip_ipaddr_t dns;
   static int dns_asked;
@@ -107,17 +119,18 @@ PROCESS_THREAD(nat64_node_process, ev, data)
 
   PROCESS_BEGIN();
 
-  NAT64_SET_DEST(&dest, NAT64_TEST_ADDR);
-
   printf("\nNAT64 node starting\n");
-  printf("  target ");
+#ifdef NAT64_TEST_ADDR
+  NAT64_SET_DEST(&dest, NAT64_TEST_ADDR);
+  printf("  UDP probe target ");
   uip_debug_ipaddr_print(&dest);
   printf(" port %u\n", NAT64_TEST_PORT);
 
   simple_udp_register(&conn, NAT64_TEST_PORT, NULL, NAT64_TEST_PORT, rx);
+  sent = 0;
+#endif
 
   joined = 0;
-  sent = 0;
   while(1) {
     etimer_set(&periodic, SEND_INTERVAL);
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&periodic));
@@ -167,6 +180,7 @@ PROCESS_THREAD(nat64_node_process, ev, data)
       }
     }
 
+#ifdef NAT64_TEST_ADDR
     {
       char msg[64];
       int len = snprintf(msg, sizeof(msg),
@@ -174,6 +188,7 @@ PROCESS_THREAD(nat64_node_process, ev, data)
       simple_udp_sendto(&conn, msg, len, &dest);
       printf("sent #%lu (%d bytes)\n", sent, len);
     }
+#endif
   }
 
   PROCESS_END();

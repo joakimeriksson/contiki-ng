@@ -58,16 +58,26 @@
 /*---------------------------------------------------------------------------*/
 #include "sys/log.h"
 #define LOG_MODULE "enc-spi"
-#define LOG_LEVEL LOG_LEVEL_NONE
+/*
+ * Errors on by default: a failed bus acquire in select() otherwise turns
+ * into every register read returning zero with nothing to say why.
+ */
+#ifdef LOG_CONF_LEVEL_ENC28J60_SPI
+#define LOG_LEVEL LOG_CONF_LEVEL_ENC28J60_SPI
+#else
+#define LOG_LEVEL LOG_LEVEL_ERR
+#endif
 /*---------------------------------------------------------------------------*/
 #ifndef ETH_SPI_CONTROLLER
 #define ETH_SPI_CONTROLLER 0
 #endif
 
 /*
- * The ENC28J60 is specified for up to 20 MHz. Anything the controller cannot
- * produce exactly is rounded down by the SPI arch layer, so asking for the
- * rated maximum is safe.
+ * The ENC28J60 is specified for up to 20 MHz. The SPI arch layer rounds a
+ * request down to what the chosen controller instance can produce, so a
+ * higher value here is capped rather than rejected. 8 MHz is what the
+ * non-high-speed SPIM instances top out at anyway, and it is reliable on
+ * jumper wires.
  */
 #ifndef ETH_SPI_BIT_RATE
 #define ETH_SPI_BIT_RATE 8000000

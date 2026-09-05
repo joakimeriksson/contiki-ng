@@ -10,9 +10,8 @@ LWM2M_EXAMPLE = $(CONTIKI)/examples/lwm2m-ipso-objects
 PROJECTDIRS += $(LWM2M_EXAMPLE)
 CONTIKI_SOURCEFILES += example-ipso-temperature.c
 
-# Our project-conf.h sets the NAT64 server address, then defers to the
-# stock basic configuration.
-CFLAGS += -DPROJECT_CONF_PATH=\"project-conf.h\"
+# The local project-conf.h (picked up by Makefile.include) sets the NAT64
+# server address, then defers to the stock basic configuration.
 
 include $(CONTIKI)/Makefile.dir-variables
 MODULES += $(CONTIKI_NG_APP_LAYER_DIR)/coap

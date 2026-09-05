@@ -87,6 +87,27 @@ static const nrfx_spim_t spim_instance[SPI_CONTROLLER_COUNT] = {
 #endif
 };
 /*---------------------------------------------------------------------------*/
+/*
+ * Highest bit rate each instance can produce. Only the high-speed instance
+ * of an SoC (SPIM3 on the nRF52840, SPIM4 on the nRF5340, SPIM00 on the
+ * nRF54L15) does 16 and 32 Mbps; the others stop at 8. nrfx validates the
+ * frequency against the SoC, not the instance, so asking a slow instance for
+ * 16 Mbps is accepted and then misprogrammed. The MDK publishes the limit
+ * per instance as SPIMn_MAX_DATARATE, in Mbps.
+ */
+#define SPIM_MAX_BIT_RATE(id) \
+  ((uint32_t)NRFX_CONCAT_3(SPIM, id, _MAX_DATARATE) * 1000000UL)
+
+static const uint32_t spim_max_bit_rate[SPI_CONTROLLER_COUNT] = {
+  SPIM_MAX_BIT_RATE(NRF_SPI_CONF_CONTROLLER0_ID),
+#if SPI_CONTROLLER_COUNT > 1
+  SPIM_MAX_BIT_RATE(NRF_SPI_CONF_CONTROLLER1_ID),
+#endif
+#if SPI_CONTROLLER_COUNT > 2
+  SPIM_MAX_BIT_RATE(NRF_SPI_CONF_CONTROLLER2_ID),
+#endif
+};
+/*---------------------------------------------------------------------------*/
 typedef struct {
   mutex_t lock;
   const spi_device_t *owner;
@@ -100,6 +121,9 @@ static spi_arch_lock_t bus[SPI_CONTROLLER_COUNT];
  * a write buffer outside Data RAM, or bytes that must be clocked out and
  * discarded (ignore_len).
  */
+/* EasyDMA MAXCNT is 16 bits wide on every SPIM instance this port targets. */
+#define SPIM_EASYDMA_MAX_LEN 0xFFFF
+
 static uint8_t stage_tx[NRF_SPI_CHUNK_SIZE];
 static uint8_t stage_rx[NRF_SPI_CHUNK_SIZE];
 /*---------------------------------------------------------------------------*/
@@ -116,17 +140,20 @@ static uint8_t stage_rx[NRF_SPI_CHUNK_SIZE];
  * clamped to that slowest rate because the hardware has nothing lower.
  */
 static uint32_t
-resolve_bit_rate(const nrfx_spim_t *inst, uint32_t requested)
+resolve_bit_rate(unsigned controller, uint32_t requested)
 {
+  const nrfx_spim_t *inst = &spim_instance[controller];
+
+  /* Never ask an instance for more than it can produce. */
+  if(requested == 0 || requested > spim_max_bit_rate[controller]) {
+    requested = spim_max_bit_rate[controller];
+  }
+
 #if NRF_SPIM_HAS_PRESCALER
   uint32_t base = NRFX_SPIM_BASE_FREQUENCY_GET(inst);
   uint32_t min = NRF_SPIM_PRESCALER_MIN_GET(inst->p_reg);
   uint32_t max = NRF_SPIM_PRESCALER_MAX_GET(inst->p_reg);
   uint32_t prescaler;
-
-  if(requested == 0) {
-    return base / max;
-  }
 
   /* Round the divisor up so the resulting rate does not exceed the request. */
   prescaler = (base + requested - 1) / requested;
@@ -214,8 +241,7 @@ spi_arch_lock_and_open(const spi_device_t *dev)
     NRF_GPIO_PIN_MAP(SPI_DEVICE_PORT(miso, dev), dev->pin_spi_miso),
     NRF_SPIM_PIN_NOT_CONNECTED);
 
-  config.frequency = resolve_bit_rate(&spim_instance[dev->spi_controller],
-                                     dev->spi_bit_rate);
+  config.frequency = resolve_bit_rate(dev->spi_controller, dev->spi_bit_rate);
   config.mode = spi_mode(dev);
   /*
    * Pad short writes with zeroes rather than the nrfx default of 0xff, to
@@ -357,12 +383,13 @@ spi_arch_transfer(const spi_device_t *dev,
   inst = &spim_instance[dev->spi_controller];
 
   /*
-   * Fast path: nothing to discard, and both buffers are where EasyDMA can
-   * reach them. nrfx clocks max(wlen, rlen) bytes, padding the shorter
-   * side, which is exactly the contract of this function when
-   * ignore_len is 0.
+   * Fast path: nothing to discard, both buffers are where EasyDMA can
+   * reach them, and the lengths fit the 16-bit MAXCNT registers. nrfx
+   * clocks max(wlen, rlen) bytes, padding the shorter side, which is
+   * exactly the contract of this function when ignore_len is 0.
    */
   if(ignore_len == 0 &&
+     wlen <= SPIM_EASYDMA_MAX_LEN && rlen <= SPIM_EASYDMA_MAX_LEN &&
      (wlen == 0 || nrfx_is_in_ram(write_buf)) &&
      (rlen == 0 || nrfx_is_in_ram(inbuf))) {
     return xfer(inst, write_buf, wlen, inbuf, rlen);

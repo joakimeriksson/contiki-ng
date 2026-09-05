@@ -323,7 +323,10 @@ examples — see the [nrf-vpr platform documentation](nrf-vpr.md).
 The nRF port implements the Contiki-NG SPI HAL (`os/dev/spi.h`) on top of
 `nrfx_spim`. It is opt-in: set `NRF_WITH_SPI=1` and list the SPIM instance ids
 in `NRF_SPI_INSTANCES`, in logical controller order. Builds that do not ask for
-SPI are unaffected.
+SPI are unaffected. When `NRF_SPI_INSTANCES` is not given, the build picks the
+SoC's default instance (SPIM0 on the nRF52840, SPIM1 on the nRF5340 application
+core, SPIM00 on the nRF54L15); an instance id that does not exist on the SoC
+is rejected with a message listing the ones that do.
 
 Instance choice is constrained on SoCs that group peripherals into SERIAL
 slots. SPIMn and UARTEn in the same slot share an interrupt vector, so
